@@ -139,6 +139,8 @@ class NurseryServiceWeb {
         if (data['success'] == true) {
           final List<dynamic> nurseriesData = data['nurseries'];
           final nurseries = nurseriesData.map((nurseryData) {
+            final photoUrl = nurseryData['photoUrl'] ?? '';
+            print('📸 Nursery ${nurseryData['name']}: photoUrl = $photoUrl');
             return Nursery(
               id: nurseryData['id'],
               ownerId: nurseryData['ownerId'],
@@ -155,7 +157,7 @@ class NurseryServiceWeb {
               availableSpots: _parseInt(nurseryData['availableSpots']),
               ageRange: nurseryData['ageRange'] ?? '',
               rating: _parseDouble(nurseryData['rating']),
-              photo: nurseryData['photoUrl'] ?? '',
+              photo: photoUrl,
               facilities: List<String>.from(nurseryData['facilities'] ?? []),
               activities: List<String>.from(nurseryData['activities'] ?? []),
               distance: 0.0,

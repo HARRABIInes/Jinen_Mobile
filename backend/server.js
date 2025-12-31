@@ -257,9 +257,9 @@ app.post('/api/nurseries', async (req, res) => {
       INSERT INTO nurseries (
         owner_id, name, description, address, city, postal_code,
         latitude, longitude, phone, email, hours, price_per_month,
-        total_spots, age_range, photo_url
+        total_spots, available_spots, age_range, photo_url
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $14, $15)
       RETURNING id, owner_id, name, description, address, city, postal_code,
                 phone, email, hours, price_per_month, total_spots, available_spots,
                 age_range, rating, photo_url, created_at

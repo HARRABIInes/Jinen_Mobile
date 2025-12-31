@@ -258,15 +258,56 @@ class _NurseryCard extends StatelessWidget {
                         ? Image.network(
                             nursery.photo,
                             fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
                                 color: Colors.grey[300],
-                                child: const Icon(Icons.image,
-                                    size: 64, color: Colors.grey),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.photo_library,
+                                        size: 64, color: Colors.grey),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Image non disponible',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               );
                             },
                           )
-                        : const Icon(Icons.image, size: 64, color: Colors.grey),
+                        : Container(
+                            color: Colors.grey[300],
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.photo_library,
+                                    size: 64, color: Colors.grey),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Aucune image',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
                 ),
                 // Available spots badge
