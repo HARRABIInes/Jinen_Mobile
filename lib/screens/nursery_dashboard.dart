@@ -8,6 +8,7 @@ import '../services/nursery_dashboard_service.dart';
 import '../widgets/app_drawer.dart';
 import 'chat_list_screen.dart';
 import 'manage_enrolled_screen.dart';
+import 'nursery_performance_screen.dart';
 
 class NurseryDashboard extends StatefulWidget {
   const NurseryDashboard({super.key});
@@ -471,8 +472,19 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                           icon: Icons.event, label: 'Activités & horaires'),
                       const _QuickAction(
                           icon: Icons.people, label: 'Parents & équipe'),
-                      const _QuickAction(
-                          icon: Icons.bar_chart, label: 'Performance'),
+                      _QuickAction(
+                        icon: Icons.bar_chart,
+                        label: 'Performance',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const NurseryPerformanceScreen(),
+                            ),
+                          );
+                        },
+                      ),
                       const _QuickAction(
                           icon: Icons.attach_money, label: 'Suivi financier'),
                       const _QuickAction(
