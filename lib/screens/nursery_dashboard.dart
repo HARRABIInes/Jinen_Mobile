@@ -3,302 +3,453 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/user.dart';
 import '../widgets/app_drawer.dart';
+import '../services/nursery_dashboard_service.dart';
+import '../services/enrollment_service_web.dart';
 import 'chat_list_screen.dart';
 
-class NurseryDashboard extends StatelessWidget {
+class NurseryDashboard extends StatefulWidget {
   const NurseryDashboard({super.key});
+
+  @override
+  State<NurseryDashboard> createState() => _NurseryDashboardState();
+}
+
+class _NurseryDashboardState extends State<NurseryDashboard> {
+  final NurseryDashboardService _dashboardService = NurseryDashboardService();
+  final EnrollmentServiceWeb _enrollmentService = EnrollmentServiceWeb();
+
+  Map<String, dynamic>? _stats;
+  List<Map<String, dynamic>> _schedule = [];
+  List<Map<String, dynamic>> _pendingEnrollments = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    print('🔄 Loading dashboard data...');
+    setState(() => _isLoading = true);
+
+    final appState = Provider.of<AppState>(context, listen: false);
+    final nurseries = appState.nurseries;
+
+    if (nurseries.isNotEmpty) {
+      final nurseryId = nurseries.first.id;
+      print('🏢 Nursery ID: $nurseryId');
+
+      // Load stats, schedule, and pending enrollments in parallel
+      final results = await Future.wait([
+        _dashboardService.getNurseryStats(nurseryId),
+        _dashboardService.getDailySchedule(nurseryId),
+        _enrollmentService.getEnrollmentsByNursery(nurseryId),
+      ]);
+
+      print('📊 Stats received: ${results[0]}');
+      print('📅 Schedule received: ${results[1]}');
+      print('📝 Enrollments received: ${(results[2] as List).length} items');
+
+      setState(() {
+        _stats = results[0] as Map<String, dynamic>?;
+        _schedule = results[1] as List<Map<String, dynamic>>;
+        final allEnrollments = results[2] as List<Map<String, dynamic>>;
+        _pendingEnrollments =
+            allEnrollments.where((e) => e['status'] == 'pending').toList();
+        print('✅ Pending enrollments: ${_pendingEnrollments.length}');
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleAcceptEnrollment(String enrollmentId) async {
+    final success = await _dashboardService.acceptEnrollment(enrollmentId);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Inscription acceptée avec succès'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _loadDashboardData(); // Reload data
+    }
+  }
+
+  Future<void> _handleRejectEnrollment(String enrollmentId) async {
+    final success = await _dashboardService.rejectEnrollment(enrollmentId);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Inscription refusée'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _loadDashboardData(); // Reload data
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final user = appState.user;
 
-    // Mock data for demonstration
-    final int enrolled = 18;
-    final int totalSpots = 20;
-    final int revenue = 6300;
-    final List<Map<String, String>> requests = [
-      {
-        'name': 'Youssef Mansour',
-        'parent': 'Fatma Mansour',
-        'date': '13/11/2024',
-        'status': 'En attente',
-      },
-      {
-        'name': 'Lina Gharbi',
-        'parent': 'Ahmed Gharbi',
-        'date': '13/11/2024',
-        'status': 'En attente',
-      },
-      {
-        'name': 'Adam Ben Said',
-        'parent': 'Sabrina Ben Said',
-        'date': '13/11/2024',
-        'status': 'En attente',
-      },
-    ];
-    final List<Map<String, String>> program = [
-      {
-        'time': '09:00',
-        'activity': 'Activités créatives - Groupe A',
-        'children': '8 enfants'
-      },
-      {
-        'time': '10:30',
-        'activity': 'Récréation extérieure',
-        'children': '18 enfants'
-      },
-      {'time': '12:00', 'activity': 'Déjeuner', 'children': '16 enfants'},
-      {'time': '14:00', 'activity': 'Sieste - Petits', 'children': ''},
-      {
-        'time': '15:30',
-        'activity': 'Musique et danse',
-        'children': '12 enfants'
-      },
-    ];
-    final List<Map<String, String>> messages = [
-      {
-        'name': 'Leila Ben Ali',
-        'time': 'il y a 2h',
-        'msg': 'Bonjour, Sofia est absente demain pour raison...'
-      },
-      {
-        'name': 'Mohamed Trabelsi',
-        'time': 'il y a 2h',
-        'msg': 'Merci pour le rapport quotidien ! Très utile.'
-      },
-    ];
-
     return Scaffold(
       drawer: const AppDrawer(userType: UserType.nursery),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Gradient header with stats
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(24),
-                  bottomRight: Radius.circular(24),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
                     children: [
-                      Builder(
-                        builder: (context) => IconButton(
-                          icon: const Icon(
-                            Icons.menu,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                          onPressed: () {
-                            Scaffold.of(context).openDrawer();
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Tableau de bord',
-                                style: TextStyle(
-                                    color: Colors.white70, fontSize: 13)),
-                            Text(user?.name ?? 'Garderie',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18)),
-                          ],
-                        ),
-                      ),
-                      Stack(
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.chat_bubble_outline,
-                                color: Colors.white),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ChatListScreen(
-                                    userId: user?.id ?? 'directeur1',
-                                    userType: 'directeur',
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          if (appState.unreadMessagesCount > 0)
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                child: Text(
-                                  '${appState.unreadMessagesCount}',
-                                  style: const TextStyle(
+                          Row(
+                            children: [
+                              Builder(
+                                builder: (context) => IconButton(
+                                  icon: const Icon(
+                                    Icons.menu,
                                     color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                                    size: 28,
                                   ),
-                                  textAlign: TextAlign.center,
+                                  onPressed: () {
+                                    Scaffold.of(context).openDrawer();
+                                  },
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Bonjour,',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    user?.name ?? 'Garderie',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Stack(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.chat_bubble_outline,
+                                        color: Colors.white, size: 28),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => ChatListScreen(
+                                            userId: user?.id ?? 'nursery1',
+                                            userType: 'nursery',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  if (appState.unreadMessagesCount > 0)
+                                    Positioned(
+                                      right: 8,
+                                      top: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        constraints: const BoxConstraints(
+                                          minWidth: 16,
+                                          minHeight: 16,
+                                        ),
+                                        child: Text(
+                                          '${appState.unreadMessagesCount}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.notifications,
+                                    color: Colors.white),
+                                onPressed: () {},
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.logout,
+                                    color: Colors.white),
+                                onPressed: () => appState.logout(),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.notifications,
-                            color: Colors.white),
-                        onPressed: () {},
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.logout, color: Colors.white),
-                        onPressed: () => appState.logout(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _StatCard(
-                          label: 'Enfants inscrits',
-                          value: '$enrolled/$totalSpots',
-                          icon: Icons.child_care,
-                          color: Colors.white,
-                          fontSize: 16,
-                          iconSize: 28,
-                          padding: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _StatCard(
-                          label: 'Revenus (TND/mois)',
-                          value: '$revenue',
-                          icon: Icons.attach_money,
-                          color: Colors.white,
-                          fontSize: 16,
-                          iconSize: 28,
-                          padding: 12,
-                        ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _StatCard(
+                              label: 'Enfants inscrits',
+                              value: _stats != null
+                                  ? '${_stats!['enrolledChildren']}/${_stats!['totalSpots']}'
+                                  : '--/--',
+                              icon: Icons.child_care,
+                              color: Colors.white,
+                              fontSize: 16,
+                              iconSize: 28,
+                              padding: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _StatCard(
+                              label: 'Revenus (TND/mois)',
+                              value: _stats != null
+                                  ? '${_stats!['monthlyRevenue']}'
+                                  : '--',
+                              icon: Icons.attach_money,
+                              color: Colors.white,
+                              fontSize: 16,
+                              iconSize: 28,
+                              padding: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Registration requests
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Demandes d\'inscription (5)',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  TextButton(onPressed: () {}, child: const Text('Tout voir')),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: requests.map((req) => _RequestCard(req)).toList(),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Daily program
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: const Text('Programme d\'aujourd\'hui',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Card(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                child: Column(
-                  children: program.map((item) => _ProgramRow(item)).toList(),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-            // Quick actions
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: const Text('Actions rapides',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _QuickAction(icon: Icons.group, label: 'Gérer les inscrits'),
-                  _QuickAction(
-                      icon: Icons.event, label: 'Activités & horaires'),
-                  _QuickAction(icon: Icons.people, label: 'Parents & équipe'),
-                  _QuickAction(icon: Icons.bar_chart, label: 'Performance'),
-                  _QuickAction(
-                      icon: Icons.attach_money, label: 'Suivi financier'),
-                  _QuickAction(icon: Icons.settings, label: 'Configuration'),
+                // Loading indicator
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else ...[
+                  // Registration requests
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                            'Demandes d\'inscription (${_pendingEnrollments.length})',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15)),
+                        TextButton(
+                            onPressed: () {}, child: const Text('Tout voir')),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _pendingEnrollments.isEmpty
+                        ? const Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Text('Aucune demande en attente'),
+                            ),
+                          )
+                        : Column(
+                            children: _pendingEnrollments
+                                .map((enrollment) => _RequestCard(
+                                      enrollment: enrollment,
+                                      onAccept: () => _handleAcceptEnrollment(
+                                          enrollment['id']),
+                                      onReject: () => _handleRejectEnrollment(
+                                          enrollment['id']),
+                                    ))
+                                .toList(),
+                          ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Daily program
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Programme d\'aujourd\'hui',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15)),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle,
+                              color: Color(0xFF667EEA)),
+                          onPressed: () => _showAddScheduleDialog(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Card(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      child: _schedule.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Text('Aucune activité programmée'),
+                            )
+                          : Column(
+                              children: _schedule
+                                  .map((item) => _ProgramRow(
+                                        item: item,
+                                        onDelete: () =>
+                                            _handleDeleteSchedule(item['id']),
+                                      ))
+                                  .toList(),
+                            ),
+                    ),
+                  ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 16),
 
-            // Recent messages
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Messages récents',
+                const SizedBox(height: 16),
+
+                // Quick actions
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: const Text('Actions rapides',
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  TextButton(onPressed: () {}, child: const Text('Tout voir')),
-                ],
-              ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _QuickAction(
+                          icon: Icons.group, label: 'Gérer les inscrits'),
+                      _QuickAction(
+                          icon: Icons.event, label: 'Activités & horaires'),
+                      _QuickAction(
+                          icon: Icons.people, label: 'Parents & équipe'),
+                      _QuickAction(icon: Icons.bar_chart, label: 'Performance'),
+                      _QuickAction(
+                          icon: Icons.attach_money, label: 'Suivi financier'),
+                      _QuickAction(
+                          icon: Icons.settings, label: 'Configuration'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: messages.map((msg) => _MessageCard(msg)).toList(),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  void _showAddScheduleDialog(BuildContext context) {
+    final timeController = TextEditingController();
+    final activityController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final participantController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ajouter une activité'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: timeController,
+                decoration:
+                    const InputDecoration(labelText: 'Heure (ex: 09:00)'),
+              ),
+              TextField(
+                controller: activityController,
+                decoration: const InputDecoration(labelText: 'Activité'),
+              ),
+              TextField(
+                controller: descriptionController,
+                decoration:
+                    const InputDecoration(labelText: 'Description (optionnel)'),
+              ),
+              TextField(
+                controller: participantController,
+                decoration:
+                    const InputDecoration(labelText: 'Nombre d\'enfants'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final appState = Provider.of<AppState>(context, listen: false);
+              final nurseryId = appState.nurseries.first.id;
+
+              await _dashboardService.createScheduleItem(
+                nurseryId: nurseryId,
+                timeSlot: timeController.text,
+                activityName: activityController.text,
+                description: descriptionController.text.isEmpty
+                    ? null
+                    : descriptionController.text,
+                participantCount: int.tryParse(participantController.text),
+              );
+
+              Navigator.pop(context);
+              _loadDashboardData();
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleDeleteSchedule(String scheduleId) async {
+    final success = await _dashboardService.deleteScheduleItem(scheduleId);
+    if (success && mounted) {
+      _loadDashboardData();
+    }
   }
 }
 
@@ -351,10 +502,22 @@ class _StatCard extends StatelessWidget {
 }
 
 class _RequestCard extends StatelessWidget {
-  final Map<String, String> req;
-  const _RequestCard(this.req);
+  final Map<String, dynamic> enrollment;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  const _RequestCard({
+    required this.enrollment,
+    required this.onAccept,
+    required this.onReject,
+  });
+
   @override
   Widget build(BuildContext context) {
+    final child = enrollment['child'] as Map<String, dynamic>?;
+    final parent = enrollment['parent'] as Map<String, dynamic>?;
+    final createdAt = enrollment['createdAt'] as String?;
+
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -366,12 +529,14 @@ class _RequestCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(req['name'] ?? '',
+                  Text(child?['childName'] ?? 'N/A',
                       style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Parent: ${req['parent']}',
+                  Text('Parent: ${parent?['name'] ?? 'N/A'}',
                       style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  Text('Demandé le ${req['date']}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  if (createdAt != null)
+                    Text('Demandé le ${_formatDate(createdAt)}',
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
               ),
             ),
@@ -381,15 +546,15 @@ class _RequestCard extends StatelessWidget {
                 color: Colors.orange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(req['status'] ?? '',
-                  style: const TextStyle(
+              child: const Text('En attente',
+                  style: TextStyle(
                       color: Colors.orange,
                       fontWeight: FontWeight.bold,
                       fontSize: 12)),
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: () {},
+              onPressed: onAccept,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10B981),
                 foregroundColor: Colors.white,
@@ -403,54 +568,83 @@ class _RequestCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             OutlinedButton(
-              onPressed: () {},
+              onPressed: onReject,
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.black,
-                side: const BorderSide(color: Color(0xFF667EEA)),
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Voir détails', style: TextStyle(fontSize: 13)),
+              child: const Text('Refuser', style: TextStyle(fontSize: 13)),
             ),
           ],
         ),
       ),
     );
   }
+
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      return '${date.day}/${date.month}/${date.year}';
+    } catch (e) {
+      return isoDate;
+    }
+  }
 }
 
 class _ProgramRow extends StatelessWidget {
-  final Map<String, String> item;
-  const _ProgramRow(this.item);
+  final Map<String, dynamic> item;
+  final VoidCallback onDelete;
+
+  const _ProgramRow({
+    required this.item,
+    required this.onDelete,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Text(item['time'] ?? '',
+          Text(item['timeSlot'] ?? '',
               style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                   color: Color(0xFF667EEA))),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(item['activity'] ?? '',
-                style: const TextStyle(fontSize: 14)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item['activityName'] ?? '',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w500)),
+                if (item['description'] != null && item['description'] != '')
+                  Text(item['description'],
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
           ),
-          if ((item['children'] ?? '').isNotEmpty)
+          if (item['participantCount'] != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFF10B981).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(item['children']!,
+              child: Text('${item['participantCount']} enfants',
                   style:
                       const TextStyle(color: Color(0xFF10B981), fontSize: 12)),
             ),
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+            onPressed: onDelete,
+            tooltip: 'Supprimer',
+          ),
         ],
       ),
     );

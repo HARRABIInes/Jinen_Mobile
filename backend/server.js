@@ -678,12 +678,14 @@ app.get('/api/enrollments/nursery/:nurseryId', async (req, res) => {
     const result = await pool.query(query, [nurseryId]);
 
     const enrollments = result.rows.map(row => ({
+      id: row.enrollment_id,
       enrollmentId: row.enrollment_id,
       startDate: row.start_date,
       status: row.status,
       createdAt: row.created_at,
       child: {
         id: row.child_id,
+        childName: row.child_name,
         name: row.child_name,
         birthDate: row.date_of_birth,
         age: row.age
@@ -821,6 +823,252 @@ app.patch('/api/enrollments/:enrollmentId/status', async (req, res) => {
       success: false,
       error: 'Failed to update enrollment status'
     });
+  }
+});
+
+// ==============NURSERY DASHBOARD STATISTICS ==============
+
+// Get nursery statistics (enrolled children, revenue, etc.)
+app.get('/api/nurseries/:nurseryId/stats', async (req, res) => {
+  const { nurseryId } = req.params;
+
+  try {
+    // Get total spots and available spots
+    const nurseryQuery = 'SELECT total_spots, available_spots, price_per_month FROM nurseries WHERE id = $1';
+    const nurseryResult = await pool.query(nurseryQuery, [nurseryId]);
+    
+    if (nurseryResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Nursery not found' });
+    }
+
+    const nursery = nurseryResult.rows[0];
+    const enrolledCount = nursery.total_spots - nursery.available_spots;
+    const monthlyRevenue = enrolledCount * parseFloat(nursery.price_per_month);
+
+    // Get pending enrollments count
+    const pendingQuery = `
+      SELECT COUNT(*) as pending_count
+      FROM enrollments
+      WHERE nursery_id = $1 AND status = 'pending'
+    `;
+    const pendingResult = await pool.query(pendingQuery, [nurseryId]);
+    const pendingCount = parseInt(pendingResult.rows[0].pending_count);
+
+    res.json({
+      success: true,
+      stats: {
+        enrolledChildren: enrolledCount,
+        totalSpots: nursery.total_spots,
+        availableSpots: nursery.available_spots,
+        monthlyRevenue: monthlyRevenue,
+        pendingEnrollments: pendingCount
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching nursery stats:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch statistics' });
+  }
+});
+
+// ============== DAILY SCHEDULE ENDPOINTS ==============
+
+// Get daily schedule for a nursery
+app.get('/api/nurseries/:nurseryId/schedule', async (req, res) => {
+  const { nurseryId } = req.params;
+
+  try {
+    const query = `
+      SELECT id, time_slot, activity_name, description, participant_count
+      FROM daily_schedule
+      WHERE nursery_id = $1
+      ORDER BY time_slot ASC
+    `;
+    
+    const result = await pool.query(query, [nurseryId]);
+
+    res.json({
+      success: true,
+      schedule: result.rows.map(row => ({
+        id: row.id,
+        timeSlot: row.time_slot,
+        activityName: row.activity_name,
+        description: row.description,
+        participantCount: row.participant_count
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch schedule' });
+  }
+});
+
+// Create daily schedule item
+app.post('/api/nurseries/:nurseryId/schedule', async (req, res) => {
+  const { nurseryId } = req.params;
+  const { timeSlot, activityName, description, participantCount } = req.body;
+
+  try {
+    const query = `
+      INSERT INTO daily_schedule (nursery_id, time_slot, activity_name, description, participant_count)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, time_slot, activity_name, description, participant_count
+    `;
+    
+    const result = await pool.query(query, [nurseryId, timeSlot, activityName, description || null, participantCount || 0]);
+    const row = result.rows[0];
+
+    res.status(201).json({
+      success: true,
+      schedule: {
+        id: row.id,
+        timeSlot: row.time_slot,
+        activityName: row.activity_name,
+        description: row.description,
+        participantCount: row.participant_count
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating schedule:', error);
+    res.status(500).json({ success: false, error: 'Failed to create schedule' });
+  }
+});
+
+// Update daily schedule item
+app.put('/api/schedule/:scheduleId', async (req, res) => {
+  const { scheduleId } = req.params;
+  const { timeSlot, activityName, description, participantCount } = req.body;
+
+  try {
+    const query = `
+      UPDATE daily_schedule
+      SET time_slot = COALESCE($1, time_slot),
+          activity_name = COALESCE($2, activity_name),
+          description = COALESCE($3, description),
+          participant_count = COALESCE($4, participant_count),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING id, time_slot, activity_name, description, participant_count
+    `;
+    
+    const result = await pool.query(query, [timeSlot, activityName, description, participantCount, scheduleId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Schedule not found' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      schedule: {
+        id: row.id,
+        timeSlot: row.time_slot,
+        activityName: row.activity_name,
+        description: row.description,
+        participantCount: row.participant_count
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating schedule:', error);
+    res.status(500).json({ success: false, error: 'Failed to update schedule' });
+  }
+});
+
+// Delete daily schedule item
+app.delete('/api/schedule/:scheduleId', async (req, res) => {
+  const { scheduleId } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM daily_schedule WHERE id = $1 RETURNING id', [scheduleId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Schedule not found' });
+    }
+
+    res.json({ success: true, message: 'Schedule deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting schedule:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete schedule' });
+  }
+});
+
+// ============== ENROLLMENT MANAGEMENT ==============
+
+// Accept enrollment (change status to active)
+app.post('/api/enrollments/:enrollmentId/accept', async (req, res) => {
+  const { enrollmentId } = req.params;
+
+  console.log('📥 Accept enrollment request for ID:', enrollmentId);
+
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+
+    // Get enrollment details
+    const enrollmentQuery = 'SELECT nursery_id, status FROM enrollments WHERE id = $1';
+    const enrollmentResult = await client.query(enrollmentQuery, [enrollmentId]);
+
+    console.log('🔍 Enrollment found:', enrollmentResult.rows.length > 0);
+
+    if (enrollmentResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Enrollment not found' });
+    }
+
+    const enrollment = enrollmentResult.rows[0];
+
+    if (enrollment.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, error: 'Enrollment is not pending' });
+    }
+
+    // Update enrollment status to active
+    const updateResult = await client.query('UPDATE enrollments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *', ['active', enrollmentId]);
+    console.log('✅ Enrollment updated:', updateResult.rows[0]);
+
+    // Decrease available spots
+    const spotsResult = await client.query('UPDATE nurseries SET available_spots = available_spots - 1 WHERE id = $1 AND available_spots > 0 RETURNING available_spots', [enrollment.nursery_id]);
+    console.log('📊 Available spots updated to:', spotsResult.rows[0]?.available_spots);
+
+    await client.query('COMMIT');
+    console.log('✅ Transaction committed successfully');
+
+    res.json({ success: true, message: 'Enrollment accepted successfully' });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error accepting enrollment:', error);
+    res.status(500).json({ success: false, error: 'Failed to accept enrollment' });
+  } finally {
+    client.release();
+  }
+});
+
+// Reject enrollment (change status to cancelled)
+app.post('/api/enrollments/:enrollmentId/reject', async (req, res) => {
+  const { enrollmentId } = req.params;
+
+  try {
+    // Update enrollment status to cancelled
+    const result = await pool.query(
+      'UPDATE enrollments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND status = $3 RETURNING id',
+      ['cancelled', enrollmentId, 'pending']
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Enrollment not found or not pending' });
+    }
+
+    res.json({ success: true, message: 'Enrollment rejected successfully' });
+
+  } catch (error) {
+    console.error('Error rejecting enrollment:', error);
+    res.status(500).json({ success: false, error: 'Failed to reject enrollment' });
   }
 });
 
