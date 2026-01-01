@@ -323,13 +323,16 @@ class _NurseryPerformanceScreenState extends State<NurseryPerformanceScreen> {
   Widget _buildCommentCard(Map<String, dynamic> review) {
     final parentName = review['parentName'] ?? 'Parent Anonyme';
     
-    // Parse rating safely (it might be string or number)
+    // Parse rating safely (it might be string or number) - keep as double
     final ratingValue = review['rating'];
-    final rating = ratingValue is int 
-        ? ratingValue 
-        : (ratingValue is double 
-            ? ratingValue.toInt()
-            : (int.tryParse(ratingValue.toString()) ?? 0));
+    final ratingDouble = ratingValue is double
+        ? ratingValue
+        : (ratingValue is int 
+            ? (ratingValue as int).toDouble()
+            : double.tryParse(ratingValue.toString()) ?? 0.0);
+    
+    // For display, show the full rating (not just the integer part)
+    final ratingInt = ratingDouble.floor();
     
     final comment = review['comment'] ?? '';
     final createdAt = review['createdAt'] ?? '';
@@ -367,7 +370,7 @@ class _NurseryPerformanceScreenState extends State<NurseryPerformanceScreen> {
                       Row(
                         children: List.generate(5, (i) {
                           return Icon(
-                            i < rating ? Icons.star : Icons.star_border,
+                            i < ratingInt ? Icons.star : Icons.star_border,
                             size: 14,
                             color: Colors.amber,
                           );
@@ -380,15 +383,15 @@ class _NurseryPerformanceScreenState extends State<NurseryPerformanceScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _getRatingColor(rating).withOpacity(0.1),
+                    color: _getRatingColor(ratingInt).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '$rating/5',
+                    '${ratingDouble.toStringAsFixed(1)}/5',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: _getRatingColor(rating),
+                      color: _getRatingColor(ratingInt),
                     ),
                   ),
                 ),
