@@ -580,9 +580,6 @@ class _ParentDashboardState extends State<ParentDashboard> {
     final appState = Provider.of<AppState>(context, listen: false);
     final parentId = appState.user?.id;
 
-    double rating = 5.0;
-    final commentController = TextEditingController();
-
     if (parentId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -591,17 +588,20 @@ class _ParentDashboardState extends State<ParentDashboard> {
       return;
     }
 
+    double rating = 5.0;
+    final commentController = TextEditingController();
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Laisser un avis - ${nursery['name'] ?? ''}'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Notez la garderie (0.5 - 5.0)'),
-              StatefulBuilder(
-                builder: (context, setState) => Slider(
+          child: StatefulBuilder(
+            builder: (dialogContext, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Notez la garderie (0.5 - 5.0)'),
+                Slider(
                   value: rating,
                   min: 0,
                   max: 5,
@@ -611,14 +611,14 @@ class _ParentDashboardState extends State<ParentDashboard> {
                     setState(() => rating = v);
                   },
                 ),
-              ),
-              TextField(
-                controller: commentController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                    hintText: 'Votre commentaire (optionnel)'),
-              ),
-            ],
+                TextField(
+                  controller: commentController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                      hintText: 'Votre commentaire (optionnel)'),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -794,12 +794,12 @@ class _ParentDashboardState extends State<ParentDashboard> {
       builder: (context) => AlertDialog(
         title: const Text('Modifier mon avis'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Notez la garderie (0.5 - 5.0)'),
-              StatefulBuilder(
-                builder: (context, setState) => Slider(
+          child: StatefulBuilder(
+            builder: (dialogContext, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Notez la garderie (0.5 - 5.0)'),
+                Slider(
                   value: rating,
                   min: 0,
                   max: 5,
@@ -809,14 +809,14 @@ class _ParentDashboardState extends State<ParentDashboard> {
                     setState(() => rating = v);
                   },
                 ),
-              ),
-              TextField(
-                controller: commentController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                    hintText: 'Votre commentaire (optionnel)'),
-              ),
-            ],
+                TextField(
+                  controller: commentController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                      hintText: 'Votre commentaire (optionnel)'),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
