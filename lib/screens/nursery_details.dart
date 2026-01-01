@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../services/review_service.dart';
 import '../services/review_service_web.dart';
 import '../models/review.dart';
 import '../models/nursery.dart';
@@ -15,8 +14,7 @@ class NurseryDetails extends StatefulWidget {
 }
 
 class _NurseryDetailsState extends State<NurseryDetails> {
-  final ReviewService _reviewService = ReviewService();
-  List<Review> _reviews = [];
+  List<Map<String, dynamic>> _reviews = [];
   bool _isLoadingReviews = false;
 
   @override
@@ -31,9 +29,11 @@ class _NurseryDetailsState extends State<NurseryDetails> {
 
     if (nursery != null) {
       setState(() => _isLoadingReviews = true);
-      final reviews = await _reviewService.getReviewsByNursery(nursery.id);
+      final res = await ReviewServiceWeb.getNurseryReviews(nursery.id);
       setState(() {
-        _reviews = reviews;
+        _reviews = res['success'] == true 
+            ? List<Map<String, dynamic>>.from(res['reviews'] ?? [])
+            : [];
         _isLoadingReviews = false;
       });
     }
@@ -422,6 +422,14 @@ class _NurseryDetailsState extends State<NurseryDetails> {
                                           itemCount: _reviews.length,
                                           itemBuilder: (context, index) {
                                             final review = _reviews[index];
+                                            final parentName = review['parentName'] as String? ?? '';
+                                            final ratingValue = review['rating'];
+                                            final rating = ratingValue is String 
+                                              ? double.tryParse(ratingValue) ?? 0.0
+                                              : ratingValue is int 
+                                                ? (ratingValue as int).toDouble()
+                                                : (ratingValue as double? ?? 0.0);
+                                            final comment = review['comment'] as String? ?? '';
                                             return Card(
                                               margin: const EdgeInsets.only(
                                                   bottom: 12),
@@ -439,8 +447,8 @@ class _NurseryDetailsState extends State<NurseryDetails> {
                                                               const Color(
                                                                   0xFF00BFA5),
                                                           child: Text(
-                                                            review.parentName[0]
-                                                                .toUpperCase(),
+                                                            parentName.isNotEmpty ? parentName[0]
+                                                                .toUpperCase() : '?',
                                                             style:
                                                                 const TextStyle(
                                                                     color: Colors
@@ -456,8 +464,7 @@ class _NurseryDetailsState extends State<NurseryDetails> {
                                                                     .start,
                                                             children: [
                                                               Text(
-                                                                review
-                                                                    .parentName,
+                                                                parentName,
                                                                 style:
                                                                     const TextStyle(
                                                                   fontWeight:
@@ -470,7 +477,7 @@ class _NurseryDetailsState extends State<NurseryDetails> {
                                                                     .generate(
                                                                   5,
                                                                   (i) => Icon(
-                                                                    i < review.rating.floor()
+                                                                    i < rating.floor()
                                                                         ? Icons
                                                                             .star
                                                                         : Icons
@@ -488,7 +495,7 @@ class _NurseryDetailsState extends State<NurseryDetails> {
                                                     ),
                                                     const SizedBox(height: 8),
                                                     Text(
-                                                      review.comment,
+                                                      comment,
                                                       style: TextStyle(
                                                         color: Colors.grey[700],
                                                         height: 1.5,
