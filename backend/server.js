@@ -40,12 +40,17 @@ function hashPassword(password) {
 app.post('/api/auth/register', async (req, res) => {
   const { email, password, name, user_type, phone } = req.body;
 
+  console.log('📝 Register request received:', { email, name, user_type, phone });
+
   try {
     // Check if email already exists
     const checkQuery = 'SELECT id FROM users WHERE email = $1';
     const checkResult = await pool.query(checkQuery, [email]);
 
+    console.log('🔍 Email check result:', checkResult.rows);
+
     if (checkResult.rows.length > 0) {
+      console.log('❌ Email already exists:', email);
       return res.status(400).json({ 
         success: false, 
         error: 'Email already exists' 
@@ -67,6 +72,8 @@ app.post('/api/auth/register', async (req, res) => {
 
     const user = result.rows[0];
 
+    console.log('✅ User registered successfully:', user.id);
+
     res.status(201).json({
       success: true,
       user: {
@@ -80,10 +87,12 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error registering user:', error);
+    console.error('❌ Error registering user:', error.message);
+    console.error('Stack:', error.stack);
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to register user' 
+      error: 'Failed to register user',
+      details: error.message
     });
   }
 });
