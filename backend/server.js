@@ -880,6 +880,89 @@ app.get('/api/nurseries/:nurseryId/stats', async (req, res) => {
   }
 });
 
+// ============== ENROLLED CHILDREN MANAGEMENT ==============
+
+// Get all parents and their children enrolled in a nursery (for nursery dashboard)
+app.get('/api/nurseries/:nurseryId/enrolled-children', async (req, res) => {
+  const { nurseryId } = req.params;
+
+  console.log('📋 Fetching enrolled children for nursery:', nurseryId);
+
+  try {
+    const query = `
+      SELECT DISTINCT
+        u.id as parent_id,
+        u.name as parent_name,
+        u.email as parent_email,
+        u.phone as parent_phone,
+        c.id as child_id,
+        c.name as child_name,
+        c.date_of_birth,
+        c.age,
+        e.id as enrollment_id,
+        e.status as enrollment_status,
+        e.start_date,
+        e.created_at as enrollment_date
+      FROM enrollments e
+      JOIN children c ON e.child_id = c.id
+      JOIN users u ON c.parent_id = u.id
+      WHERE e.nursery_id = $1 AND e.status IN ('active', 'pending')
+      ORDER BY u.name ASC, c.name ASC
+    `;
+    
+    const result = await pool.query(query, [nurseryId]);
+
+    console.log('✅ Found', result.rows.length, 'enrollment records');
+
+    // Group data by parent
+    const parentMap = new Map();
+
+    result.rows.forEach(row => {
+      if (!parentMap.has(row.parent_id)) {
+        parentMap.set(row.parent_id, {
+          parentId: row.parent_id,
+          parentName: row.parent_name,
+          parentEmail: row.parent_email,
+          parentPhone: row.parent_phone,
+          children: []
+        });
+      }
+
+      parentMap.get(row.parent_id).children.push({
+        childId: row.child_id,
+        childName: row.child_name,
+        age: row.age,
+        birthDate: row.date_of_birth,
+        enrollmentId: row.enrollment_id,
+        enrollmentStatus: row.enrollment_status,
+        startDate: row.start_date,
+        enrollmentDate: row.enrollment_date
+      });
+    });
+
+    const parents = Array.from(parentMap.values());
+
+    console.log('✅ Grouped into', parents.length, 'parent(s)');
+
+    res.json({
+      success: true,
+      nurseryId: nurseryId,
+      totalParents: parents.length,
+      totalChildren: result.rows.length,
+      parents: parents
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching enrolled children:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch enrolled children',
+      details: error.message
+    });
+  }
+});
+
 // ============== DAILY SCHEDULE ENDPOINTS ==============
 
 // Get daily schedule for a nursery
