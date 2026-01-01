@@ -123,8 +123,8 @@ class WelcomeScreen extends StatelessWidget {
                       shadowColor: Colors.black.withOpacity(0.3),
                     ).copyWith(
                       backgroundColor:
-                          MaterialStateProperty.all(Colors.transparent),
-                      elevation: MaterialStateProperty.all(0),
+                          WidgetStateProperty.all(Colors.transparent),
+                      elevation: WidgetStateProperty.all(0),
                     ),
                     child: Ink(
                       decoration: BoxDecoration(

@@ -4,11 +4,11 @@ import 'utilisateur.dart';
 
 class Directeur extends Utilisateur {
   Directeur({
-    required int id,
-    required String nom,
-    required String email,
-    required String motDePasse,
-  }) : super(id: id, nom: nom, email: email, motDePasse: motDePasse);
+    required super.id,
+    required super.nom,
+    required super.email,
+    required super.motDePasse,
+  });
 
   void creerProfilGarderie() {}
   void mettreAJourProfil() {}

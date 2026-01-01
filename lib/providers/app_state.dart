@@ -9,8 +9,6 @@ import '../services/user_service_web.dart';
 import '../services/nursery_service.dart';
 import '../services/nursery_service_web.dart';
 import '../services/child_service.dart';
-import '../services/conversation_service.dart';
-import '../services/notification_service.dart';
 
 enum ScreenType {
   welcome,
@@ -37,8 +35,6 @@ class AppState extends ChangeNotifier {
   final NurseryService _nurseryService = NurseryService();
   final NurseryServiceWeb _nurseryServiceWeb = NurseryServiceWeb();
   final ChildService _childService = ChildService();
-  final ConversationService _conversationService = ConversationService();
-  final NotificationService _notificationService = NotificationService();
 
   ScreenType get currentScreen => _currentScreen;
   User? get user => _user;

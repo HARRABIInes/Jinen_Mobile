@@ -133,10 +133,10 @@ class _NurserySearchState extends State<NurserySearch> {
               ),
 
               // Location indicator
-              Padding(
-                padding: const EdgeInsets.all(16),
+              const Padding(
+                padding: EdgeInsets.all(16),
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.location_on, color: Colors.white, size: 16),
                     SizedBox(width: 8),
                     Text(
@@ -272,9 +272,9 @@ class _NurseryCard extends StatelessWidget {
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
                                 color: Colors.grey[300],
-                                child: Column(
+                                child: const Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
+                                  children: [
                                     Icon(Icons.photo_library,
                                         size: 64, color: Colors.grey),
                                     SizedBox(height: 8),
@@ -292,9 +292,9 @@ class _NurseryCard extends StatelessWidget {
                           )
                         : Container(
                             color: Colors.grey[300],
-                            child: Column(
+                            child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
+                              children: [
                                 Icon(Icons.photo_library,
                                     size: 64, color: Colors.grey),
                                 SizedBox(height: 8),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../models/nursery.dart';
 
 class NurserySetupScreen extends StatefulWidget {
   const NurserySetupScreen({super.key});
@@ -299,7 +298,7 @@ class _NurserySetupScreenState extends State<NurserySetupScreen> {
                         disabledBackgroundColor: Colors.grey,
                       ).copyWith(
                         backgroundColor:
-                            MaterialStateProperty.all(Colors.transparent),
+                            WidgetStateProperty.all(Colors.transparent),
                       ),
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.white)
@@ -675,7 +674,7 @@ class _NurserySetupScreenState extends State<NurserySetupScreen> {
                 ),
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );

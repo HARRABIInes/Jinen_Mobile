@@ -384,7 +384,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               shadowColor: Colors.transparent,
                             ).copyWith(
                               backgroundColor:
-                                  MaterialStateProperty.all(Colors.transparent),
+                                  WidgetStateProperty.all(Colors.transparent),
                             ),
                             child: Ink(
                               decoration: BoxDecoration(

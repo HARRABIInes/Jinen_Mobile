@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../providers/app_state.dart';
 import '../utils/validators.dart';
 import '../services/enrollment_service_web.dart';
 
@@ -43,6 +45,19 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     super.initState();
     // Date par défaut = aujourd'hui
     _startDateController.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
+    
+    // Pré-remplir les données du parent connecté
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final appState = Provider.of<AppState>(context, listen: false);
+      final user = appState.user;
+      
+      if (user != null) {
+        _parentNameController.text = user.name;
+        if (user.phone != null) {
+          _parentPhoneController.text = user.phone!;
+        }
+      }
+    });
   }
 
   @override
@@ -106,6 +121,10 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       setState(() => _isSubmitting = true);
 
       try {
+        // Récupérer le parentId depuis AppState
+        final appState = Provider.of<AppState>(context, listen: false);
+        final parentId = appState.user?.id;
+
         final result = await _enrollmentService.createEnrollment(
           childName: _childNameController.text,
           birthDate: _birthDateController.text,
@@ -115,6 +134,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           startDate: _startDateController.text,
           notes:
               _notesController.text.isNotEmpty ? _notesController.text : null,
+          parentId: parentId,
         );
 
         if (result != null) {
@@ -412,6 +432,10 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   }
 
   Widget _buildParentInfoPage() {
+    // Vérifier si un utilisateur est connecté
+    final appState = Provider.of<AppState>(context);
+    final isUserConnected = appState.user != null;
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -425,6 +449,30 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
               color: Color(0xFF1F2937),
             ),
           ),
+          const SizedBox(height: 8),
+          if (isUserConnected)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECF2F1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Vos informations de connexion seront utilisées',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 32),
 
           // Nom du parent
@@ -440,16 +488,21 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
           TextFormField(
             controller: _parentNameController,
             validator: Validators.validateName,
+            readOnly: isUserConnected,
             decoration: InputDecoration(
               hintText: 'Nom et prénom du parent',
               hintStyle: TextStyle(color: Colors.grey[400]),
               filled: true,
-              fillColor: const Color(0xFFF9FAFB),
+              fillColor: isUserConnected ? const Color(0xFFF3F4F6) : const Color(0xFFF9FAFB),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
               ),
               enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              disabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
               ),
@@ -480,17 +533,22 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             controller: _parentPhoneController,
             validator: Validators.validateTunisianPhone,
             keyboardType: TextInputType.phone,
+            readOnly: isUserConnected,
             decoration: InputDecoration(
               hintText: '+216 12345678',
               hintStyle: TextStyle(color: Colors.grey[400]),
               prefixIcon: const Icon(Icons.phone, color: Color(0xFF00BFA5)),
               filled: true,
-              fillColor: const Color(0xFFF9FAFB),
+              fillColor: isUserConnected ? const Color(0xFFF3F4F6) : const Color(0xFFF9FAFB),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
               ),
               enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              disabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
               ),

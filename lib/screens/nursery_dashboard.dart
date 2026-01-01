@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/app_state.dart';
+
 import '../models/user.dart';
-import '../widgets/app_drawer.dart';
-import '../services/nursery_dashboard_service.dart';
+import '../providers/app_state.dart';
 import '../services/enrollment_service_web.dart';
+import '../services/nursery_dashboard_service.dart';
+import '../widgets/app_drawer.dart';
 import 'chat_list_screen.dart';
 import 'manage_enrolled_screen.dart';
 
@@ -19,77 +20,162 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
   final NurseryDashboardService _dashboardService = NurseryDashboardService();
   final EnrollmentServiceWeb _enrollmentService = EnrollmentServiceWeb();
 
+  bool _isLoading = true;
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _schedule = [];
   List<Map<String, dynamic>> _pendingEnrollments = [];
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboardData());
   }
 
   Future<void> _loadDashboardData() async {
-    print('🔄 Loading dashboard data...');
     setState(() => _isLoading = true);
 
     final appState = Provider.of<AppState>(context, listen: false);
-    final nurseries = appState.nurseries;
+    if (appState.nurseries.isEmpty) {
+      setState(() => _isLoading = false);
+      return;
+    }
 
-    if (nurseries.isNotEmpty) {
-      final nurseryId = nurseries.first.id;
-      print('🏢 Nursery ID: $nurseryId');
+    final nurseryId = appState.nurseries.first.id;
 
-      // Load stats, schedule, and pending enrollments in parallel
+    try {
       final results = await Future.wait([
         _dashboardService.getNurseryStats(nurseryId),
         _dashboardService.getDailySchedule(nurseryId),
         _enrollmentService.getEnrollmentsByNursery(nurseryId),
       ]);
 
-      print('📊 Stats received: ${results[0]}');
-      print('📅 Schedule received: ${results[1]}');
-      print('📝 Enrollments received: ${(results[2] as List).length} items');
-
       setState(() {
         _stats = results[0] as Map<String, dynamic>?;
-        _schedule = results[1] as List<Map<String, dynamic>>;
-        final allEnrollments = results[2] as List<Map<String, dynamic>>;
-        _pendingEnrollments =
-            allEnrollments.where((e) => e['status'] == 'pending').toList();
-        print('✅ Pending enrollments: ${_pendingEnrollments.length}');
+        _schedule = List<Map<String, dynamic>>.from(results[1] as List);
+
+        final allEnrollments =
+            List<Map<String, dynamic>>.from(results[2] as List);
+        _pendingEnrollments = allEnrollments
+            .where((e) =>
+                (e['status'] ?? '').toString().toLowerCase() == 'pending')
+            .toList();
+
         _isLoading = false;
       });
-    } else {
+    } catch (e) {
       setState(() => _isLoading = false);
+      // ignore: avoid_print
+      print('Error loading dashboard data: $e');
     }
   }
 
   Future<void> _handleAcceptEnrollment(String enrollmentId) async {
     final success = await _dashboardService.acceptEnrollment(enrollmentId);
-    if (success && mounted) {
+    if (!mounted) return;
+
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Inscription acceptée avec succès'),
           backgroundColor: Colors.green,
         ),
       );
-      _loadDashboardData(); // Reload data
+      _loadDashboardData();
     }
   }
 
   Future<void> _handleRejectEnrollment(String enrollmentId) async {
     final success = await _dashboardService.rejectEnrollment(enrollmentId);
-    if (success && mounted) {
+    if (!mounted) return;
+
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Inscription refusée'),
           backgroundColor: Colors.orange,
         ),
       );
-      _loadDashboardData(); // Reload data
+      _loadDashboardData();
     }
+  }
+
+  Future<void> _handleDeleteSchedule(String scheduleId) async {
+    final success = await _dashboardService.deleteScheduleItem(scheduleId);
+    if (success && mounted) {
+      _loadDashboardData();
+    }
+  }
+
+  void _showAddScheduleDialog() {
+    final timeController = TextEditingController();
+    final activityController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final participantController = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ajouter une activité'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: timeController,
+                decoration:
+                    const InputDecoration(labelText: 'Heure (ex: 09:00)'),
+              ),
+              TextField(
+                controller: activityController,
+                decoration: const InputDecoration(labelText: 'Activité'),
+              ),
+              TextField(
+                controller: descriptionController,
+                decoration:
+                    const InputDecoration(labelText: 'Description (optionnel)'),
+              ),
+              TextField(
+                controller: participantController,
+                decoration:
+                    const InputDecoration(labelText: "Nombre d'enfants"),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final appState = Provider.of<AppState>(context, listen: false);
+              if (appState.nurseries.isEmpty) {
+                Navigator.pop(context);
+                return;
+              }
+
+              final nurseryId = appState.nurseries.first.id;
+              await _dashboardService.createScheduleItem(
+                nurseryId: nurseryId,
+                timeSlot: timeController.text,
+                activityName: activityController.text,
+                description: descriptionController.text.isEmpty
+                    ? null
+                    : descriptionController.text,
+                participantCount: int.tryParse(participantController.text),
+              );
+
+              if (!context.mounted) return;
+              Navigator.pop(context);
+              _loadDashboardData();
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -111,7 +197,6 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // Header
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -128,9 +213,8 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                     color: Colors.white,
                                     size: 28,
                                   ),
-                                  onPressed: () {
-                                    Scaffold.of(context).openDrawer();
-                                  },
+                                  onPressed: () =>
+                                      Scaffold.of(context).openDrawer(),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -161,13 +245,16 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                               Stack(
                                 children: [
                                   IconButton(
-                                    icon: const Icon(Icons.chat_bubble_outline,
-                                        color: Colors.white, size: 28),
+                                    icon: const Icon(
+                                      Icons.chat_bubble_outline,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
                                     onPressed: () {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (context) => ChatListScreen(
+                                          builder: (_) => ChatListScreen(
                                             userId: user?.id ?? 'nursery1',
                                             userType: 'nursery',
                                           ),
@@ -203,14 +290,18 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                 ],
                               ),
                               IconButton(
-                                icon: const Icon(Icons.notifications,
-                                    color: Colors.white),
+                                icon: const Icon(
+                                  Icons.notifications,
+                                  color: Colors.white,
+                                ),
                                 onPressed: () {},
                               ),
                               IconButton(
-                                icon: const Icon(Icons.logout,
-                                    color: Colors.white),
-                                onPressed: () => appState.logout(),
+                                icon: const Icon(
+                                  Icons.logout,
+                                  color: Colors.white,
+                                ),
+                                onPressed: appState.logout,
                               ),
                             ],
                           ),
@@ -218,7 +309,6 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                       ),
                       const SizedBox(height: 20),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
                           Expanded(
                             child: _StatCard(
@@ -228,9 +318,6 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                   : '--/--',
                               icon: Icons.child_care,
                               color: Colors.white,
-                              fontSize: 16,
-                              iconSize: 28,
-                              padding: 12,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -242,9 +329,6 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                   : '--',
                               icon: Icons.attach_money,
                               color: Colors.white,
-                              fontSize: 16,
-                              iconSize: 28,
-                              padding: 12,
                             ),
                           ),
                         ],
@@ -253,26 +337,26 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Loading indicator
                 if (_isLoading)
                   const Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32.0),
+                      padding: EdgeInsets.all(32),
                       child: CircularProgressIndicator(),
                     ),
                   )
                 else ...[
-                  // Registration requests
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                            'Demandes d\'inscription (${_pendingEnrollments.length})',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15)),
+                          "Demandes d'inscription (${_pendingEnrollments.length})",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
                         TextButton(
                             onPressed: () {}, child: const Text('Tout voir')),
                       ],
@@ -283,37 +367,45 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                     child: _pendingEnrollments.isEmpty
                         ? const Card(
                             child: Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(16),
                               child: Text('Aucune demande en attente'),
                             ),
                           )
                         : Column(
                             children: _pendingEnrollments
-                                .map((enrollment) => _RequestCard(
-                                      enrollment: enrollment,
-                                      onAccept: () => _handleAcceptEnrollment(
-                                          enrollment['id']),
-                                      onReject: () => _handleRejectEnrollment(
-                                          enrollment['id']),
-                                    ))
+                                .map(
+                                  (enrollment) => _RequestCard(
+                                    enrollment: enrollment,
+                                    onAccept: () => _handleAcceptEnrollment(
+                                      (enrollment['id'] ?? '').toString(),
+                                    ),
+                                    onReject: () => _handleRejectEnrollment(
+                                      (enrollment['id'] ?? '').toString(),
+                                    ),
+                                  ),
+                                )
                                 .toList(),
                           ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Daily program
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Programme d\'aujourd\'hui',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15)),
+                        const Text(
+                          "Programme d'aujourd'hui",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
                         IconButton(
-                          icon: const Icon(Icons.add_circle,
-                              color: Color(0xFF667EEA)),
-                          onPressed: () => _showAddScheduleDialog(context),
+                          icon: const Icon(
+                            Icons.add_circle,
+                            color: Color(0xFF667EEA),
+                          ),
+                          onPressed: _showAddScheduleDialog,
                         ),
                       ],
                     ),
@@ -322,33 +414,39 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Card(
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       child: _schedule.isEmpty
                           ? const Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(16),
                               child: Text('Aucune activité programmée'),
                             )
                           : Column(
                               children: _schedule
-                                  .map((item) => _ProgramRow(
-                                        item: item,
-                                        onDelete: () =>
-                                            _handleDeleteSchedule(item['id']),
-                                      ))
+                                  .map(
+                                    (item) => _ProgramRow(
+                                      item: item,
+                                      onDelete: () => _handleDeleteSchedule(
+                                        (item['id'] ?? '').toString(),
+                                      ),
+                                    ),
+                                  )
                                   .toList(),
                             ),
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 16),
-
-                // Quick actions
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: const Text('Actions rapides',
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Actions rapides',
                       style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -357,23 +455,27 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                     runSpacing: 12,
                     children: [
                       _QuickAction(
-                          icon: Icons.group,
-                          label: 'Gérer les inscrits',
-                          onTap: () => Navigator.push(
+                        icon: Icons.group,
+                        label: 'Gérer les inscrits',
+                        onTap: () {
+                          Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) =>
                                   const ManageEnrolledScreen(),
                             ),
-                          )),
-                      _QuickAction(
+                          );
+                        },
+                      ),
+                      const _QuickAction(
                           icon: Icons.event, label: 'Activités & horaires'),
-                      _QuickAction(
+                      const _QuickAction(
                           icon: Icons.people, label: 'Parents & équipe'),
-                      _QuickAction(icon: Icons.bar_chart, label: 'Performance'),
-                      _QuickAction(
+                      const _QuickAction(
+                          icon: Icons.bar_chart, label: 'Performance'),
+                      const _QuickAction(
                           icon: Icons.attach_money, label: 'Suivi financier'),
-                      _QuickAction(
+                      const _QuickAction(
                           icon: Icons.settings, label: 'Configuration'),
                     ],
                   ),
@@ -386,80 +488,6 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
       ),
     );
   }
-
-  void _showAddScheduleDialog(BuildContext context) {
-    final timeController = TextEditingController();
-    final activityController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final participantController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ajouter une activité'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: timeController,
-                decoration:
-                    const InputDecoration(labelText: 'Heure (ex: 09:00)'),
-              ),
-              TextField(
-                controller: activityController,
-                decoration: const InputDecoration(labelText: 'Activité'),
-              ),
-              TextField(
-                controller: descriptionController,
-                decoration:
-                    const InputDecoration(labelText: 'Description (optionnel)'),
-              ),
-              TextField(
-                controller: participantController,
-                decoration:
-                    const InputDecoration(labelText: 'Nombre d\'enfants'),
-                keyboardType: TextInputType.number,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final appState = Provider.of<AppState>(context, listen: false);
-              final nurseryId = appState.nurseries.first.id;
-
-              await _dashboardService.createScheduleItem(
-                nurseryId: nurseryId,
-                timeSlot: timeController.text,
-                activityName: activityController.text,
-                description: descriptionController.text.isEmpty
-                    ? null
-                    : descriptionController.text,
-                participantCount: int.tryParse(participantController.text),
-              );
-
-              Navigator.pop(context);
-              _loadDashboardData();
-            },
-            child: const Text('Ajouter'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _handleDeleteSchedule(String scheduleId) async {
-    final success = await _dashboardService.deleteScheduleItem(scheduleId);
-    if (success && mounted) {
-      _loadDashboardData();
-    }
-  }
 }
 
 class _StatCard extends StatelessWidget {
@@ -467,41 +495,44 @@ class _StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
-  final double fontSize;
-  final double iconSize;
-  final double padding;
+
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
-    this.fontSize = 20,
-    this.iconSize = 32,
-    this.padding = 16,
   });
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(padding),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: iconSize),
+          Icon(icon, color: color, size: 28),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value,
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: fontSize,
-                      color: color)),
-              Text(label,
-                  style:
-                      TextStyle(fontSize: 12, color: color.withOpacity(0.8))),
+              Text(
+                value,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: color,
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color.withOpacity(0.8),
+                ),
+              ),
             ],
           ),
         ],
@@ -538,14 +569,19 @@ class _RequestCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(child?['childName'] ?? 'N/A',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Parent: ${parent?['name'] ?? 'N/A'}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(
+                    (child?['childName'] ?? 'N/A').toString(),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'Parent: ${(parent?['name'] ?? 'N/A').toString()}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                   if (createdAt != null)
-                    Text('Demandé le ${_formatDate(createdAt)}',
-                        style:
-                            const TextStyle(fontSize: 12, color: Colors.grey)),
+                    Text(
+                      'Demandé le ${_formatDate(createdAt)}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                 ],
               ),
             ),
@@ -555,11 +591,14 @@ class _RequestCard extends StatelessWidget {
                 color: Colors.orange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text('En attente',
-                  style: TextStyle(
-                      color: Colors.orange,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12)),
+              child: const Text(
+                'En attente',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
             ElevatedButton(
@@ -570,7 +609,8 @@ class _RequestCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 elevation: 0,
               ),
               child: const Text('Accepter', style: TextStyle(fontSize: 13)),
@@ -584,7 +624,8 @@ class _RequestCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: const Text('Refuser', style: TextStyle(fontSize: 13)),
             ),
@@ -598,7 +639,7 @@ class _RequestCard extends StatelessWidget {
     try {
       final date = DateTime.parse(isoDate);
       return '${date.day}/${date.month}/${date.year}';
-    } catch (e) {
+    } catch (_) {
       return isoDate;
     }
   }
@@ -608,46 +649,61 @@ class _ProgramRow extends StatelessWidget {
   final Map<String, dynamic> item;
   final VoidCallback onDelete;
 
-  const _ProgramRow({
-    required this.item,
-    required this.onDelete,
-  });
+  const _ProgramRow({required this.item, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
+    final timeSlot = (item['timeSlot'] ?? '').toString();
+    final activityName = (item['activityName'] ?? '').toString();
+    final description = item['description']?.toString();
+    final participantCount = item['participantCount'];
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Text(item['timeSlot'] ?? '',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Color(0xFF667EEA))),
+          Text(
+            timeSlot,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Color(0xFF667EEA),
+            ),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item['activityName'] ?? '',
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w500)),
-                if (item['description'] != null && item['description'] != '')
-                  Text(item['description'],
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                  activityName,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (description != null && description.isNotEmpty)
+                  Text(
+                    description,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
               ],
             ),
           ),
-          if (item['participantCount'] != null)
+          if (participantCount != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFF10B981).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('${item['participantCount']} enfants',
-                  style:
-                      const TextStyle(color: Color(0xFF10B981), fontSize: 12)),
+              child: Text(
+                '$participantCount enfants',
+                style: const TextStyle(
+                  color: Color(0xFF10B981),
+                  fontSize: 12,
+                ),
+              ),
             ),
           IconButton(
             icon: const Icon(Icons.delete, color: Colors.red, size: 20),
@@ -664,11 +720,13 @@ class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
+
   const _QuickAction({
     required this.icon,
     required this.label,
     this.onTap,
   });
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -685,56 +743,21 @@ class _QuickAction extends StatelessWidget {
               color: Colors.black.withOpacity(0.05),
               blurRadius: 6,
               offset: const Offset(0, 2),
-            ),
+            )
           ],
         ),
         child: Column(
           children: [
             Icon(icon, size: 28, color: const Color(0xFF667EEA)),
             const SizedBox(height: 8),
-            Text(label,
-                textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MessageCard extends StatelessWidget {
-  final Map<String, String> msg;
-  const _MessageCard(this.msg);
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: const Color(0xFF667EEA).withOpacity(0.15),
-              child: Text(msg['name']![0],
-                  style: const TextStyle(
-                      color: Color(0xFF667EEA), fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(msg['name'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(msg['msg'] ?? '',
-                      style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                ],
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            Text(msg['time'] ?? '',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
       ),

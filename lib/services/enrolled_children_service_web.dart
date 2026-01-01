@@ -93,4 +93,66 @@ class EnrolledChildrenService {
       };
     }
   }
+
+  /// Accept a pending enrollment (change status to active)
+  static Future<Map<String, dynamic>> acceptEnrollment(String enrollmentId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/enrollments/$enrollmentId/accept'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Enrollment accepted'
+          };
+        }
+      }
+
+      return {
+        'success': false,
+        'error': 'Failed to accept enrollment'
+      };
+    } catch (e) {
+      print('❌ Error accepting enrollment: $e');
+      return {
+        'success': false,
+        'error': e.toString()
+      };
+    }
+  }
+
+  /// Reject/cancel an enrollment (change status to cancelled)
+  static Future<Map<String, dynamic>> rejectEnrollment(String enrollmentId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/enrollments/$enrollmentId/reject'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Enrollment rejected'
+          };
+        }
+      }
+
+      return {
+        'success': false,
+        'error': 'Failed to reject enrollment'
+      };
+    } catch (e) {
+      print('❌ Error rejecting enrollment: $e');
+      return {
+        'success': false,
+        'error': e.toString()
+      };
+    }
+  }
 }

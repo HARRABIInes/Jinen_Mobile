@@ -8,7 +8,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+// CORS configuration to allow localhost web dev
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests from localhost (web dev) and from the same origin (mobile)
+    if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // For development, allow all; tighten for production
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // PostgreSQL connection pool
@@ -32,6 +46,22 @@ pool.query('SELECT NOW()', (err, res) => {
 // Hash password using SHA-256
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+// Create notification for a user
+async function createNotification(userId, type, title, message, relatedId = null) {
+  try {
+    const query = `
+      INSERT INTO notifications (user_id, type, title, message, related_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `;
+    const result = await pool.query(query, [userId, type, title, message, relatedId]);
+    console.log(`📬 Notification created for user ${userId}: ${type}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('❌ Error creating notification:', error);
+  }
 }
 
 // ============== AUTH ENDPOINTS ==============
@@ -508,6 +538,112 @@ app.get('/api/nurseries/:id', async (req, res) => {
   }
 });
 
+// Get reviews for a nursery
+app.get('/api/nurseries/:id/reviews', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const query = `
+      SELECT r.id, r.nursery_id, r.parent_id, r.rating, r.comment, r.created_at,
+             u.name as parent_name
+      FROM reviews r
+      LEFT JOIN users u ON r.parent_id = u.id
+      WHERE r.nursery_id = $1
+      ORDER BY r.created_at DESC
+    `;
+
+    const result = await pool.query(query, [id]);
+
+    res.json({
+      success: true,
+      reviews: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch reviews' });
+  }
+});
+
+// Post a review for a nursery
+app.post('/api/nurseries/:id/reviews', async (req, res) => {
+  const { id } = req.params; // nursery id
+  const { parentId, rating, comment } = req.body;
+
+  if (!parentId || rating == null) {
+    return res.status(400).json({ success: false, error: 'parentId and rating are required' });
+  }
+
+  try {
+    const insert = `
+      INSERT INTO reviews (nursery_id, parent_id, rating, comment)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, nursery_id, parent_id, rating, comment, created_at
+    `;
+
+    const result = await pool.query(insert, [id, parentId, parseFloat(rating), comment || null]);
+
+    res.status(201).json({ success: true, review: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating review:', error);
+    res.status(500).json({ success: false, error: 'Failed to create review' });
+  }
+});
+
+// Update a review (only parent who created it should update)
+app.put('/api/reviews/:reviewId', async (req, res) => {
+  const { reviewId } = req.params;
+  const { parentId, rating, comment } = req.body;
+
+  if (!parentId || rating == null) {
+    return res.status(400).json({ success: false, error: 'parentId and rating are required' });
+  }
+
+  try {
+    // Verify ownership
+    const check = await pool.query('SELECT parent_id FROM reviews WHERE id = $1', [reviewId]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Review not found' });
+    }
+    if (check.rows[0].parent_id !== parentId) {
+      return res.status(403).json({ success: false, error: 'Not allowed to edit this review' });
+    }
+
+    const update = `
+      UPDATE reviews SET rating = $1, comment = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 RETURNING id, nursery_id, parent_id, rating, comment, updated_at
+    `;
+    const result = await pool.query(update, [parseFloat(rating), comment || null, reviewId]);
+    res.json({ success: true, review: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating review:', error);
+    res.status(500).json({ success: false, error: 'Failed to update review' });
+  }
+});
+
+// Delete a review (only parent who created it should delete)
+app.delete('/api/reviews/:reviewId', async (req, res) => {
+  const { reviewId } = req.params;
+  const { parentId } = req.body;
+
+  if (!parentId) return res.status(400).json({ success: false, error: 'parentId required' });
+
+  try {
+    const check = await pool.query('SELECT parent_id FROM reviews WHERE id = $1', [reviewId]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Review not found' });
+    }
+    if (check.rows[0].parent_id !== parentId) {
+      return res.status(403).json({ success: false, error: 'Not allowed to delete this review' });
+    }
+
+    await pool.query('DELETE FROM reviews WHERE id = $1', [reviewId]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting review:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete review' });
+  }
+});
+
 // Get nurseries by owner ID
 app.get('/api/nurseries/owner/:ownerId', async (req, res) => {
   const { ownerId } = req.params;
@@ -585,12 +721,14 @@ app.post('/api/enrollments', async (req, res) => {
     parentId 
   } = req.body;
 
+  console.log('📝 Enrollment request:', { childName, parentId, nurseryId });
+
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
 
-    // 1. Create or get parent (using users table)
+    // 1. Use provided parentId OR create a new parent
     let parentIdToUse = parentId;
     
     if (!parentIdToUse) {
@@ -607,6 +745,9 @@ app.post('/api/enrollments', async (req, res) => {
       
       const parentResult = await client.query(parentQuery, [tempEmail, passwordHash, parentName, parentPhone]);
       parentIdToUse = parentResult.rows[0].id;
+      console.log('✅ New parent created:', parentIdToUse);
+    } else {
+      console.log('✅ Using existing parent:', parentIdToUse);
     }
 
     // 2. Calculate age from birth date
@@ -621,6 +762,7 @@ app.post('/api/enrollments', async (req, res) => {
     `;
     const childResult = await client.query(childQuery, [parentIdToUse, childName, age, birthDate, notes || null]);
     const childId = childResult.rows[0].id;
+    console.log('✅ Child created:', childId);
 
     // 4. Create enrollment
     const enrollmentQuery = `
@@ -633,6 +775,7 @@ app.post('/api/enrollments', async (req, res) => {
       nurseryId, 
       startDate
     ]);
+    console.log('✅ Enrollment created:', enrollmentResult.rows[0].id);
 
     await client.query('COMMIT');
 
@@ -649,7 +792,7 @@ app.post('/api/enrollments', async (req, res) => {
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error creating enrollment:', error);
+    console.error('❌ Error creating enrollment:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to create enrollment' 
@@ -863,6 +1006,21 @@ app.get('/api/nurseries/:nurseryId/stats', async (req, res) => {
     const pendingResult = await pool.query(pendingQuery, [nurseryId]);
     const pendingCount = parseInt(pendingResult.rows[0].pending_count);
 
+    // Get rating and recent reviews
+    const ratingQuery = `SELECT rating, review_count FROM nurseries WHERE id = $1`;
+    const ratingResult = await pool.query(ratingQuery, [nurseryId]);
+    const ratingRow = ratingResult.rows[0] || { rating: 0, review_count: 0 };
+
+    const reviewsQuery = `
+      SELECT r.id, r.parent_id, r.rating, r.comment, r.created_at, u.name as parent_name
+      FROM reviews r
+      LEFT JOIN users u ON r.parent_id = u.id
+      WHERE r.nursery_id = $1
+      ORDER BY r.created_at DESC
+      LIMIT 5
+    `;
+    const reviewsResult = await pool.query(reviewsQuery, [nurseryId]);
+
     res.json({
       success: true,
       stats: {
@@ -870,7 +1028,10 @@ app.get('/api/nurseries/:nurseryId/stats', async (req, res) => {
         totalSpots: nursery.total_spots,
         availableSpots: nursery.available_spots,
         monthlyRevenue: monthlyRevenue,
-        pendingEnrollments: pendingCount
+        pendingEnrollments: pendingCount,
+        rating: ratingRow.rating,
+        reviewCount: ratingRow.review_count,
+        recentReviews: reviewsResult.rows
       }
     });
 
@@ -1101,8 +1262,14 @@ app.post('/api/enrollments/:enrollmentId/accept', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Get enrollment details
-    const enrollmentQuery = 'SELECT nursery_id, status FROM enrollments WHERE id = $1';
+    // Get enrollment details with parent and child info
+    const enrollmentQuery = `
+      SELECT e.id, e.nursery_id, e.status, c.parent_id, c.name as child_name, n.name as nursery_name
+      FROM enrollments e
+      JOIN children c ON e.child_id = c.id
+      JOIN nurseries n ON e.nursery_id = n.id
+      WHERE e.id = $1
+    `;
     const enrollmentResult = await client.query(enrollmentQuery, [enrollmentId]);
 
     console.log('🔍 Enrollment found:', enrollmentResult.rows.length > 0);
@@ -1113,6 +1280,9 @@ app.post('/api/enrollments/:enrollmentId/accept', async (req, res) => {
     }
 
     const enrollment = enrollmentResult.rows[0];
+    const parentId = enrollment.parent_id;
+    const childName = enrollment.child_name;
+    const nurseryName = enrollment.nursery_name;
 
     if (enrollment.status !== 'pending') {
       await client.query('ROLLBACK');
@@ -1126,6 +1296,20 @@ app.post('/api/enrollments/:enrollmentId/accept', async (req, res) => {
     // Decrease available spots
     const spotsResult = await client.query('UPDATE nurseries SET available_spots = available_spots - 1 WHERE id = $1 AND available_spots > 0 RETURNING available_spots', [enrollment.nursery_id]);
     console.log('📊 Available spots updated to:', spotsResult.rows[0]?.available_spots);
+
+    // Create notification for parent
+    await client.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        parentId,
+        'enrollment_accepted',
+        'Inscription Acceptée',
+        `L'inscription de ${childName} à ${nurseryName} a été acceptée!`,
+        enrollmentId
+      ]
+    );
+    console.log('📬 Notification sent to parent:', parentId);
 
     await client.query('COMMIT');
     console.log('✅ Transaction committed successfully');
@@ -1141,26 +1325,460 @@ app.post('/api/enrollments/:enrollmentId/accept', async (req, res) => {
   }
 });
 
-// Reject enrollment (change status to cancelled)
+// Reject enrollment (change status to cancelled) or cancel active enrollment
 app.post('/api/enrollments/:enrollmentId/reject', async (req, res) => {
   const { enrollmentId } = req.params;
 
+  console.log('🚫 Reject/Cancel enrollment request for ID:', enrollmentId);
+
+  const client = await pool.connect();
+
   try {
+    await client.query('BEGIN');
+
+    // Get enrollment details with parent and child info
+    const enrollmentQuery = `
+      SELECT e.id, e.nursery_id, e.status, c.parent_id, c.name as child_name, n.name as nursery_name
+      FROM enrollments e
+      JOIN children c ON e.child_id = c.id
+      JOIN nurseries n ON e.nursery_id = n.id
+      WHERE e.id = $1
+    `;
+    const enrollmentResult = await client.query(enrollmentQuery, [enrollmentId]);
+
+    console.log('🔍 Enrollment found:', enrollmentResult.rows.length > 0);
+
+    if (enrollmentResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Enrollment not found' });
+    }
+
+    const enrollment = enrollmentResult.rows[0];
+    const nurseryId = enrollment.nursery_id;
+    const currentStatus = enrollment.status;
+    const parentId = enrollment.parent_id;
+    const childName = enrollment.child_name;
+    const nurseryName = enrollment.nursery_name;
+
+    // Only allow cancelling pending or active enrollments
+    if (!['pending', 'active'].includes(currentStatus)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, error: 'Cannot cancel this enrollment status' });
+    }
+
     // Update enrollment status to cancelled
+    const updateResult = await client.query(
+      'UPDATE enrollments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      ['cancelled', enrollmentId]
+    );
+
+    console.log('✅ Enrollment cancelled:', updateResult.rows[0]);
+
+    // If it was active, return the spot to the nursery
+    if (currentStatus === 'active') {
+      const spotsResult = await client.query(
+        'UPDATE nurseries SET available_spots = available_spots + 1 WHERE id = $1 RETURNING available_spots',
+        [nurseryId]
+      );
+      console.log('📊 Available spots returned to:', spotsResult.rows[0]?.available_spots);
+    }
+
+    // Create notification for parent
+    const notificationType = currentStatus === 'pending' ? 'enrollment_rejected' : 'enrollment_cancelled';
+    const notificationTitle = currentStatus === 'pending' ? 'Inscription Rejetée' : 'Inscription Annulée';
+    const notificationMessage = currentStatus === 'pending' 
+      ? `L'inscription de ${childName} à ${nurseryName} a été rejetée.`
+      : `L'inscription de ${childName} à ${nurseryName} a été annulée.`;
+
+    await client.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [parentId, notificationType, notificationTitle, notificationMessage, enrollmentId]
+    );
+    console.log('📬 Notification sent to parent:', parentId);
+
+    await client.query('COMMIT');
+    console.log('✅ Transaction committed successfully');
+
+    res.json({ success: true, message: 'Enrollment cancelled successfully' });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Error rejecting enrollment:', error);
+    res.status(500).json({ success: false, error: 'Failed to reject enrollment' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============== NOTIFICATIONS ENDPOINTS ==============
+
+// Get notifications for a user
+app.get('/api/notifications/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  console.log('🔔 Fetching notifications for user:', userId);
+
+  try {
+    const query = `
+      SELECT id, type, title, message, is_read, related_id, sent_at
+      FROM notifications
+      WHERE user_id = $1
+      ORDER BY sent_at DESC
+      LIMIT 50
+    `;
+    
+    const result = await pool.query(query, [userId]);
+
+    console.log('📬 Found', result.rows.length, 'notifications');
+
+    res.json({
+      success: true,
+      notifications: result.rows.map(row => ({
+        id: row.id,
+        type: row.type,
+        title: row.title,
+        message: row.message,
+        isRead: row.is_read,
+        relatedId: row.related_id,
+        sentAt: row.sent_at
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching notifications:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch notifications'
+    });
+  }
+});
+
+// Mark notification as read
+app.post('/api/notifications/:notificationId/read', async (req, res) => {
+  const { notificationId } = req.params;
+
+  try {
     const result = await pool.query(
-      'UPDATE enrollments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND status = $3 RETURNING id',
-      ['cancelled', enrollmentId, 'pending']
+      'UPDATE notifications SET is_read = TRUE WHERE id = $1 RETURNING id',
+      [notificationId]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Enrollment not found or not pending' });
+      return res.status(404).json({ success: false, error: 'Notification not found' });
     }
 
-    res.json({ success: true, message: 'Enrollment rejected successfully' });
+    res.json({ success: true, message: 'Notification marked as read' });
 
   } catch (error) {
-    console.error('Error rejecting enrollment:', error);
-    res.status(500).json({ success: false, error: 'Failed to reject enrollment' });
+    console.error('Error marking notification as read:', error);
+    res.status(500).json({ success: false, error: 'Failed to mark notification as read' });
+  }
+});
+
+// Get nurseries where a parent has enrolled children
+app.get('/api/parents/:parentId/nurseries', async (req, res) => {
+  const { parentId } = req.params;
+
+  console.log('🏫 Fetching nurseries for parent:', parentId);
+
+  try {
+    const query = `
+      SELECT DISTINCT
+        n.id,
+        n.name,
+        n.description,
+        n.phone,
+        n.email,
+        n.address,
+        n.city,
+        n.rating,
+        n.available_spots,
+        n.total_spots,
+        COUNT(DISTINCT c.id) as child_count
+      FROM nurseries n
+      JOIN enrollments e ON n.id = e.nursery_id
+      JOIN children c ON e.child_id = c.id
+      WHERE c.parent_id = $1 AND e.status IN ('active', 'pending')
+      GROUP BY n.id, n.name, n.description, n.phone, n.email, n.address, n.city, n.rating, n.available_spots, n.total_spots
+      ORDER BY n.name ASC
+    `;
+    
+    const result = await pool.query(query, [parentId]);
+
+    console.log('✅ Found', result.rows.length, 'nurseries for parent');
+
+    res.json({
+      success: true,
+      parentId: parentId,
+      nurseries: result.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        phone: row.phone,
+        email: row.email,
+        address: row.address,
+        city: row.city,
+        rating: row.rating,
+        availableSpots: row.available_spots,
+        totalSpots: row.total_spots,
+        childCount: row.child_count
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching parent nurseries:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch nurseries'
+    });
+  }
+});
+
+// ============== REVIEWS/RATINGS ENDPOINTS ==============
+
+// Create or update a review for a nursery
+app.post('/api/reviews', async (req, res) => {
+  const { nurseryId, parentId, rating, comment } = req.body;
+
+  console.log('⭐ Creating review:', { nurseryId, parentId, rating, comment });
+
+  // Validate rating
+  if (!rating || rating < 0 || rating > 5) {
+    return res.status(400).json({
+      success: false,
+      error: 'Rating must be between 0 and 5'
+    });
+  }
+
+  try {
+    // Check if review already exists
+    const checkQuery = `
+      SELECT id FROM reviews
+      WHERE nursery_id = $1 AND parent_id = $2
+    `;
+    const checkResult = await pool.query(checkQuery, [nurseryId, parentId]);
+
+    let result;
+
+    if (checkResult.rows.length > 0) {
+      // Update existing review
+      const updateQuery = `
+        UPDATE reviews
+        SET rating = $1, comment = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE nursery_id = $3 AND parent_id = $4
+        RETURNING id, nursery_id, parent_id, rating, comment, created_at, updated_at
+      `;
+      result = await pool.query(updateQuery, [rating, comment || null, nurseryId, parentId]);
+      console.log('✏️ Review updated');
+    } else {
+      // Create new review
+      const insertQuery = `
+        INSERT INTO reviews (nursery_id, parent_id, rating, comment)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, nursery_id, parent_id, rating, comment, created_at, updated_at
+      `;
+      result = await pool.query(insertQuery, [nurseryId, parentId, rating, comment || null]);
+      console.log('✅ Review created');
+    }
+
+    const review = result.rows[0];
+
+    // Update nursery rating average
+    const ratingQuery = `
+      SELECT AVG(rating) as avg_rating, COUNT(*) as review_count
+      FROM reviews
+      WHERE nursery_id = $1
+    `;
+    const ratingResult = await pool.query(ratingQuery, [nurseryId]);
+    const avgRating = parseFloat(ratingResult.rows[0].avg_rating) || 0;
+    const reviewCount = parseInt(ratingResult.rows[0].review_count) || 0;
+
+    // Update nursery with new average rating
+    await pool.query(
+      'UPDATE nurseries SET rating = $1, review_count = $2 WHERE id = $3',
+      [avgRating.toFixed(2), reviewCount, nurseryId]
+    );
+
+    console.log('📊 Nursery rating updated to:', avgRating.toFixed(2));
+
+    res.status(201).json({
+      success: true,
+      review: {
+        id: review.id,
+        nurseryId: review.nursery_id,
+        parentId: review.parent_id,
+        rating: review.rating,
+        comment: review.comment,
+        createdAt: review.created_at,
+        updatedAt: review.updated_at
+      },
+      nurseryRating: {
+        averageRating: avgRating.toFixed(2),
+        reviewCount: reviewCount
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating/updating review:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create/update review',
+      details: error.message
+    });
+  }
+});
+
+// Get all reviews for a nursery
+app.get('/api/nurseries/:nurseryId/reviews', async (req, res) => {
+  const { nurseryId } = req.params;
+
+  try {
+    const query = `
+      SELECT 
+        r.id,
+        r.rating,
+        r.comment,
+        r.created_at,
+        u.name as parent_name,
+        u.id as parent_id
+      FROM reviews r
+      JOIN users u ON r.parent_id = u.id
+      WHERE r.nursery_id = $1
+      ORDER BY r.created_at DESC
+    `;
+
+    const result = await pool.query(query, [nurseryId]);
+
+    const reviews = result.rows.map(row => ({
+      id: row.id,
+      rating: row.rating,
+      comment: row.comment,
+      createdAt: row.created_at,
+      parentName: row.parent_name,
+      parentId: row.parent_id
+    }));
+
+    res.json({
+      success: true,
+      nurseryId: nurseryId,
+      totalReviews: reviews.length,
+      reviews: reviews
+    });
+
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch reviews'
+    });
+  }
+});
+
+// Get a specific review by parent for a nursery
+app.get('/api/reviews/parent/:parentId/nursery/:nurseryId', async (req, res) => {
+  const { parentId, nurseryId } = req.params;
+
+  try {
+    const query = `
+      SELECT id, rating, comment, created_at, updated_at
+      FROM reviews
+      WHERE parent_id = $1 AND nursery_id = $2
+    `;
+
+    const result = await pool.query(query, [parentId, nurseryId]);
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        review: null
+      });
+    }
+
+    const review = result.rows[0];
+
+    res.json({
+      success: true,
+      review: {
+        id: review.id,
+        rating: review.rating,
+        comment: review.comment,
+        createdAt: review.created_at,
+        updatedAt: review.updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching review:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch review'
+    });
+  }
+});
+
+// Delete a review
+app.delete('/api/reviews/:reviewId', async (req, res) => {
+  const { reviewId } = req.params;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Get review details
+    const reviewQuery = 'SELECT nursery_id FROM reviews WHERE id = $1';
+    const reviewResult = await client.query(reviewQuery, [reviewId]);
+
+    if (reviewResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: 'Review not found'
+      });
+    }
+
+    const nurseryId = reviewResult.rows[0].nursery_id;
+
+    // Delete review
+    await client.query('DELETE FROM reviews WHERE id = $1', [reviewId]);
+
+    // Update nursery rating
+    const ratingQuery = `
+      SELECT AVG(rating) as avg_rating, COUNT(*) as review_count
+      FROM reviews
+      WHERE nursery_id = $1
+    `;
+    const ratingResult = await client.query(ratingQuery, [nurseryId]);
+    const avgRating = parseFloat(ratingResult.rows[0].avg_rating) || 0;
+    const reviewCount = parseInt(ratingResult.rows[0].review_count) || 0;
+
+    // Update nursery
+    await client.query(
+      'UPDATE nurseries SET rating = $1, review_count = $2 WHERE id = $3',
+      [avgRating.toFixed(2), reviewCount, nurseryId]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'Review deleted successfully',
+      nurseryRating: {
+        averageRating: avgRating.toFixed(2),
+        reviewCount: reviewCount
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting review:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete review'
+    });
+  } finally {
+    client.release();
   }
 });
 

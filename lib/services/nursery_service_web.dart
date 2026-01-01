@@ -126,8 +126,9 @@ class NurseryServiceWeb {
       if (city != null) queryParams['city'] = city;
       if (maxPrice != null) queryParams['max_price'] = maxPrice.toString();
       if (minRating != null) queryParams['min_rating'] = minRating.toString();
-      if (minAvailableSpots != null)
+      if (minAvailableSpots != null) {
         queryParams['min_spots'] = minAvailableSpots.toString();
+      }
 
       final uri =
           Uri.parse('$baseUrl/nurseries').replace(queryParameters: queryParams);

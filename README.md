@@ -168,6 +168,73 @@ GET /api/nurseries/:nurseryId/enrolled-children
 - Color-coded status indicators
 - Responsive design for mobile and web
 
+---
+
+### 2. Parent Review & Rating System
+
+**Location**: Parent Profile → Enrollments → "Rate this Nursery" button (for active enrollments)
+
+This feature allows parents to rate and review nurseries where their children are enrolled.
+
+**Features**:
+- Submit 5-star ratings for nurseries
+- Write optional text comments/reviews
+- Update or delete existing reviews
+- Real-time nursery rating updates
+- View all reviews for a nursery
+- User-friendly dialog interface
+
+**Backend Endpoints**:
+```
+POST /api/reviews
+GET /api/nurseries/:nurseryId/reviews
+GET /api/reviews/parent/:parentId/nursery/:nurseryId
+DELETE /api/reviews/:reviewId
+```
+
+**Request Example**:
+```json
+{
+  "nurseryId": "uuid",
+  "parentId": "uuid",
+  "rating": 4.5,
+  "comment": "Great nursery with caring staff!"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "review": {
+    "id": "uuid",
+    "nurseryId": "uuid",
+    "parentId": "uuid",
+    "rating": 4.5,
+    "comment": "Great nursery with caring staff!",
+    "createdAt": "2024-01-01T10:30:00Z",
+    "updatedAt": "2024-01-01T10:30:00Z"
+  },
+  "nurseryRating": {
+    "averageRating": 4.7,
+    "reviewCount": 5
+  }
+}
+```
+
+**Files Involved**:
+- **Backend**: `backend/server.js` - `/api/reviews` endpoints
+- **Frontend Service**: `lib/services/review_service_web.dart` - API communication service
+- **Frontend Widget**: `lib/widgets/rate_nursery_dialog.dart` - Rating dialog component
+- **Integration**: `lib/screens/parent_enrollments_screen.dart` - "Rate this Nursery" button
+
+**Features Details**:
+- **Star Rating Interface**: 5-star interactive rating system
+- **Comment Section**: Optional text field for detailed feedback
+- **Update/Delete**: Ability to modify or remove existing reviews
+- **Real-time Updates**: Nursery average rating updates immediately after submission
+- **Validation**: Ensures ratings are submitted before saving
+
 ## State Management
 
 This app uses the `provider` package for state management. The main app state is managed in `AppState` class.

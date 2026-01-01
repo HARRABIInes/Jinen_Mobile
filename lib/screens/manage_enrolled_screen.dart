@@ -179,7 +179,7 @@ class _ManageEnrolledScreenState extends State<ManageEnrolledScreen> {
                             return _buildParentCard(
                               parent as Map<String, dynamic>,
                             );
-                          }).toList(),
+                          }),
                         ],
                       ),
                     ),
@@ -286,7 +286,7 @@ class _ManageEnrolledScreenState extends State<ManageEnrolledScreen> {
                   const SizedBox(height: 8),
                   ...children.map((child) {
                     return _buildChildItem(child);
-                  }).toList(),
+                  }),
                 ],
               ),
             )
@@ -308,6 +308,7 @@ class _ManageEnrolledScreenState extends State<ManageEnrolledScreen> {
 
   Widget _buildChildItem(Map<String, dynamic> child) {
     final statusColor = _getStatusColor(child['enrollmentStatus']);
+    final status = child['enrollmentStatus']?.toLowerCase() ?? 'unknown';
     
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -380,10 +381,147 @@ class _ManageEnrolledScreenState extends State<ManageEnrolledScreen> {
                 color: Colors.grey[600],
               ),
             ),
+            // Action buttons
+            const SizedBox(height: 12),
+            if (status == 'pending')
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _acceptEnrollment(child['enrollmentId']),
+                      icon: const Icon(Icons.check_circle),
+                      label: const Text('Accept'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _rejectEnrollment(child['enrollmentId']),
+                      icon: const Icon(Icons.close),
+                      label: const Text('Reject'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else if (status == 'active')
+              ElevatedButton.icon(
+                onPressed: () => _cancelEnrollment(child['enrollmentId']),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Cancel Enrollment'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _acceptEnrollment(String enrollmentId) async {
+    final result = await EnrolledChildrenService.acceptEnrollment(enrollmentId);
+    
+    if (mounted) {
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Enrollment accepted successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Reload data
+        setState(() => _isLoading = true);
+        _loadEnrolledChildren();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result['error'] ?? 'Unknown error'}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectEnrollment(String enrollmentId) async {
+    final result = await EnrolledChildrenService.rejectEnrollment(enrollmentId);
+    
+    if (mounted) {
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Enrollment rejected!'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        // Reload data
+        setState(() => _isLoading = true);
+        _loadEnrolledChildren();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result['error'] ?? 'Unknown error'}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelEnrollment(String enrollmentId) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Enrollment'),
+        content: const Text('Are you sure you want to cancel this enrollment?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final result = await EnrolledChildrenService.rejectEnrollment(enrollmentId);
+      
+      if (mounted) {
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enrollment cancelled!'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          // Reload data
+          setState(() => _isLoading = true);
+          _loadEnrolledChildren();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${result['error'] ?? 'Unknown error'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   Color _getStatusColor(String? status) {

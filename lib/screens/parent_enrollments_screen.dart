@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../models/nursery.dart';
 import '../services/enrollment_service_web.dart';
+import '../widgets/rate_nursery_dialog.dart';
 
 class ParentEnrollmentsScreen extends StatefulWidget {
   const ParentEnrollmentsScreen({super.key});
@@ -270,6 +272,40 @@ class _ParentEnrollmentsScreenState extends State<ParentEnrollmentsScreen> {
                 ),
               ),
             ],
+
+            // Rating button for active enrollments
+            if (status.toLowerCase() == 'active') ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final appState = Provider.of<AppState>(context, listen: false);
+                    final parentId = appState.user?.id;
+                    
+                    if (parentId != null && nursery['id'] != null) {
+                      // Create a Nursery object from enrollment data
+                      showDialog(
+                        context: context,
+                        builder: (context) => RateNurseryDialog(
+                          nursery: _createNurseryFromData(nursery),
+                          parentId: parentId,
+                          onReviewSubmitted: () {
+                            // Optionally refresh enrollments
+                          },
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.star_outline),
+                  label: const Text('Rate this Nursery'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -303,6 +339,29 @@ class _ParentEnrollmentsScreenState extends State<ParentEnrollmentsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Nursery _createNurseryFromData(Map<String, dynamic> data) {
+    return Nursery(
+      id: data['id'] ?? '',
+      name: data['name'] ?? 'Unknown',
+      description: data['description'] ?? '',
+      address: data['address'] ?? '',
+      city: data['city'],
+      phone: data['phone'],
+      email: data['email'],
+      price: double.tryParse(data['price']?.toString() ?? '0') ?? 0.0,
+      totalSpots: data['totalSpots'] ?? 0,
+      availableSpots: data['availableSpots'] ?? 0,
+      rating: double.tryParse(data['rating']?.toString() ?? '0') ?? 0.0,
+      ageRange: data['ageRange'] ?? '',
+      photo: data['photo'] ?? data['photoUrl'] ?? '',
+      distance: 0.0,
+      reviewCount: data['reviewCount'] ?? 0,
+      hours: data['hours'] ?? '',
+      activities: data['activities'] is List ? List<String>.from(data['activities']) : [],
+      staff: data['staff'] ?? 0,
     );
   }
 }
