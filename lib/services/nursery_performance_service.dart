@@ -21,10 +21,22 @@ class NurseryPerformanceService {
         if (data['success'] == true || data['reviews'] != null) {
           final List<dynamic> reviews = data['reviews'] ?? [];
           
+          // Normalize review data
+          final normalizedReviews = reviews.map((review) {
+            return {
+              'id': review['id'],
+              'rating': review['rating'],
+              'comment': review['comment'],
+              'createdAt': review['created_at'] ?? review['createdAt'],
+              'parentName': review['parent_name'] ?? review['parentName'],
+              'parentId': review['parent_id'] ?? review['parentId'],
+            };
+          }).toList();
+          
           // Calculate average rating
           double averageRating = 0.0;
-          if (reviews.isNotEmpty) {
-            final totalRating = reviews.fold<double>(
+          if (normalizedReviews.isNotEmpty) {
+            final totalRating = normalizedReviews.fold<double>(
               0.0,
               (sum, review) {
                 final rating = review['rating'];
@@ -34,7 +46,7 @@ class NurseryPerformanceService {
                 return sum + ratingValue;
               },
             );
-            averageRating = totalRating / reviews.length;
+            averageRating = totalRating / normalizedReviews.length;
           }
 
           // Group reviews by rating
@@ -43,7 +55,7 @@ class NurseryPerformanceService {
             ratingDistribution[i] = 0;
           }
           
-          for (var review in reviews) {
+          for (var review in normalizedReviews) {
             final rating = review['rating'];
             final ratingValue = rating is double
                 ? rating.toInt()
@@ -56,9 +68,9 @@ class NurseryPerformanceService {
           return {
             'success': true,
             'nurseryId': nurseryId,
-            'totalReviews': reviews.length,
+            'totalReviews': normalizedReviews.length,
             'averageRating': double.parse(averageRating.toStringAsFixed(2)),
-            'reviews': reviews,
+            'reviews': normalizedReviews,
             'ratingDistribution': ratingDistribution,
           };
         }

@@ -322,7 +322,15 @@ class _NurseryPerformanceScreenState extends State<NurseryPerformanceScreen> {
 
   Widget _buildCommentCard(Map<String, dynamic> review) {
     final parentName = review['parentName'] ?? 'Parent Anonyme';
-    final rating = (review['rating'] ?? 0).toInt();
+    
+    // Parse rating safely (it might be string or number)
+    final ratingValue = review['rating'];
+    final rating = ratingValue is int 
+        ? ratingValue 
+        : (ratingValue is double 
+            ? ratingValue.toInt()
+            : (int.tryParse(ratingValue.toString()) ?? 0));
+    
     final comment = review['comment'] ?? '';
     final createdAt = review['createdAt'] ?? '';
 
