@@ -26,7 +26,13 @@ class NurseryPerformanceService {
           if (reviews.isNotEmpty) {
             final totalRating = reviews.fold<double>(
               0.0,
-              (sum, review) => sum + (review['rating']?.toDouble() ?? 0.0),
+              (sum, review) {
+                final rating = review['rating'];
+                final ratingValue = rating is double
+                    ? rating
+                    : (rating is int ? rating.toDouble() : double.tryParse(rating.toString()) ?? 0.0);
+                return sum + ratingValue;
+              },
             );
             averageRating = totalRating / reviews.length;
           }
@@ -38,9 +44,12 @@ class NurseryPerformanceService {
           }
           
           for (var review in reviews) {
-            final rating = (review['rating'] ?? 0).toInt();
-            if (rating >= 1 && rating <= 5) {
-              ratingDistribution[rating] = (ratingDistribution[rating] ?? 0) + 1;
+            final rating = review['rating'];
+            final ratingValue = rating is double
+                ? rating.toInt()
+                : (rating is int ? rating : int.tryParse(rating.toString()) ?? 0);
+            if (ratingValue >= 1 && ratingValue <= 5) {
+              ratingDistribution[ratingValue] = (ratingDistribution[ratingValue] ?? 0) + 1;
             }
           }
 

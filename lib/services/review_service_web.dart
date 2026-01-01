@@ -30,9 +30,10 @@ class ReviewServiceWeb {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/nurseries/$nurseryId/reviews'),
+        Uri.parse('$baseUrl/reviews'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          'nurseryId': nurseryId,
           'parentId': parentId,
           'rating': rating,
           'comment': comment,
