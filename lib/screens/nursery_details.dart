@@ -514,41 +514,21 @@ class _NurseryDetailsState extends State<NurseryDetails> {
       ),
 
       // Bottom Button
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => EnrollmentScreen(
-                  nurseryId: nursery.id,
-                  nurseryName: nursery.name,
-                  price: nursery.price,
-                ),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, -5),
               ),
-            );
-          },
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: 0,
-          ).copyWith(
-            backgroundColor: MaterialStateProperty.all(Colors.transparent),
+            ],
           ),
-          child: Ink(
+          child: Container(
+            height: 50,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF00BFA5), Color(0xFF00ACC1)],
@@ -557,13 +537,30 @@ class _NurseryDetailsState extends State<NurseryDetails> {
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(vertical: 18),
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EnrollmentScreen(
+                      nurseryId: nursery.id,
+                      nurseryName: nursery.name,
+                      price: nursery.price,
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: const Text(
                 'Inscrire mon enfant',
                 style: TextStyle(
-                  fontSize: 17,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                   letterSpacing: 0.5,
