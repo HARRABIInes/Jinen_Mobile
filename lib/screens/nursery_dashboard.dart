@@ -9,6 +9,7 @@ import '../widgets/app_drawer.dart';
 import 'chat_list_screen.dart';
 import 'manage_enrolled_screen.dart';
 import 'nursery_performance_screen.dart';
+import 'nursery_financial_tracking_screen.dart';
 
 class NurseryDashboard extends StatefulWidget {
   const NurseryDashboard({super.key});
@@ -761,15 +762,24 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                   );
                                 },
                               ),
-                              const _QuickAction(
+                              _QuickAction(
                                 icon: Icons.account_balance_wallet_rounded,
                                 label: 'Suivi financier',
-                                gradient: LinearGradient(
+                                gradient: const LinearGradient(
                                   colors: [
                                     Color(0xFFF59E0B),
                                     Color(0xFFD97706)
                                   ],
                                 ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const NurseryFinancialTrackingScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                               const _QuickAction(
                                 icon: Icons.settings_rounded,

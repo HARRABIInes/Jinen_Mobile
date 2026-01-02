@@ -7,6 +7,7 @@ import '../services/parent_nurseries_service_web.dart';
 import '../services/review_service_web.dart';
 import 'chat_list_screen.dart';
 import 'parent_enrollments_screen.dart';
+import 'parent_payment_screen.dart';
 
 class ParentDashboard extends StatefulWidget {
   const ParentDashboard({super.key});
@@ -31,8 +32,7 @@ class _ParentDashboardState extends State<ParentDashboard> {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
       final parentId = appState.user?.id ?? '';
-      final res =
-          await ParentNurseriesServiceWeb.getParentNurseries(parentId);
+      final res = await ParentNurseriesServiceWeb.getParentNurseries(parentId);
       if (mounted) {
         setState(() {
           _nurseries = res['nurseries'] ?? [];
@@ -376,10 +376,18 @@ class _ParentDashboardState extends State<ParentDashboard> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: _QuickActionCard(
-                                icon: Icons.person,
-                                iconColor: const Color(0xFFFF9800),
-                                title: 'Mes informations',
-                                onTap: () {},
+                                icon: Icons.payment,
+                                iconColor: const Color(0xFFF59E0B),
+                                title: 'Mes Paiements',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const ParentPaymentScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ],
