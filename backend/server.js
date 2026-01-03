@@ -840,7 +840,7 @@ app.post('/api/enrollments', async (req, res) => {
     // 4. Create enrollment
     const enrollmentQuery = `
       INSERT INTO enrollments (child_id, nursery_id, start_date, status)
-      VALUES ($1, $2, $3, 'pending')
+      VALUES ($1, $2, $3, 'accepted')
       RETURNING id, created_at
     `;
     const enrollmentResult = await client.query(enrollmentQuery, [
@@ -848,7 +848,30 @@ app.post('/api/enrollments', async (req, res) => {
       nurseryId, 
       startDate
     ]);
-    console.log('✅ Enrollment created:', enrollmentResult.rows[0].id);
+    const enrollmentId = enrollmentResult.rows[0].id;
+    console.log('✅ Enrollment created:', enrollmentId);
+
+    // 5. Create payment for this enrollment
+    const paymentQuery = `
+      INSERT INTO payments (enrollment_id, parent_id, nursery_id, child_id, amount, payment_status)
+      SELECT 
+        e.id,
+        c.parent_id,
+        e.nursery_id,
+        e.child_id,
+        COALESCE(n.price_per_month, 100.00),
+        'unpaid'
+      FROM enrollments e
+      JOIN nurseries n ON e.nursery_id = n.id
+      JOIN children c ON e.child_id = c.id
+      WHERE e.id = $1
+      ON CONFLICT (enrollment_id) DO NOTHING
+      RETURNING id
+    `;
+    const paymentResult = await client.query(paymentQuery, [enrollmentId]);
+    if (paymentResult.rows.length > 0) {
+      console.log('✅ Payment created:', paymentResult.rows[0].id);
+    }
 
     await client.query('COMMIT');
 
@@ -1036,7 +1059,7 @@ app.patch('/api/enrollments/:enrollmentId/status', async (req, res) => {
   const { status } = req.body;
 
   // Validate status
-  const validStatuses = ['pending', 'active', 'completed', 'cancelled'];
+  const validStatuses = ['pending', 'accepted', 'active', 'completed', 'cancelled'];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({
       success: false,
@@ -1044,7 +1067,10 @@ app.patch('/api/enrollments/:enrollmentId/status', async (req, res) => {
     });
   }
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     const query = `
       UPDATE enrollments
       SET status = $1, updated_at = CURRENT_TIMESTAMP
@@ -1052,14 +1078,41 @@ app.patch('/api/enrollments/:enrollmentId/status', async (req, res) => {
       RETURNING id, status, updated_at
     `;
     
-    const result = await pool.query(query, [status, enrollmentId]);
+    const result = await client.query(query, [status, enrollmentId]);
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         error: 'Enrollment not found'
       });
     }
+
+    // If status is being set to 'accepted' or 'active', create payment if it doesn't exist
+    if ((status === 'accepted' || status === 'active')) {
+      const paymentQuery = `
+        INSERT INTO payments (enrollment_id, parent_id, nursery_id, child_id, amount, payment_status)
+        SELECT 
+          e.id,
+          c.parent_id,
+          e.nursery_id,
+          e.child_id,
+          COALESCE(n.price_per_month, 100.00),
+          'unpaid'
+        FROM enrollments e
+        JOIN nurseries n ON e.nursery_id = n.id
+        JOIN children c ON e.child_id = c.id
+        WHERE e.id = $1
+        ON CONFLICT (enrollment_id) DO NOTHING
+        RETURNING id
+      `;
+      const paymentResult = await client.query(paymentQuery, [enrollmentId]);
+      if (paymentResult.rows.length > 0) {
+        console.log('✅ Payment created for enrollment:', enrollmentId);
+      }
+    }
+
+    await client.query('COMMIT');
 
     res.json({
       success: true,
@@ -1071,11 +1124,14 @@ app.patch('/api/enrollments/:enrollmentId/status', async (req, res) => {
     });
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error updating enrollment status:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to update enrollment status'
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -1886,6 +1942,47 @@ app.delete('/api/reviews/:reviewId', async (req, res) => {
 // ============================================================================
 // PAYMENT ENDPOINTS (SIMPLIFIED - ONE-TIME PAYMENT PER ENROLLMENT)
 // ============================================================================
+
+// Sync missing payments - Create payments for all accepted enrollments without payment
+app.post('/api/payments/sync', async (req, res) => {
+  try {
+    const query = `
+      INSERT INTO payments (enrollment_id, parent_id, nursery_id, child_id, amount, payment_status)
+      SELECT 
+        e.id,
+        c.parent_id,
+        e.nursery_id,
+        e.child_id,
+        COALESCE(n.price_per_month, 100.00),
+        'unpaid'
+      FROM enrollments e
+      JOIN nurseries n ON e.nursery_id = n.id
+      JOIN children c ON e.child_id = c.id
+      WHERE e.status IN ('accepted', 'active')
+      AND NOT EXISTS (
+        SELECT 1 FROM payments p 
+        WHERE p.enrollment_id = e.id
+      )
+      ON CONFLICT (enrollment_id) DO NOTHING
+      RETURNING id
+    `;
+
+    const result = await pool.query(query);
+
+    res.json({
+      success: true,
+      message: `${result.rows.length} paiements créés`,
+      paymentsCreated: result.rows.length
+    });
+
+  } catch (error) {
+    console.error('Error syncing payments:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to sync payments'
+    });
+  }
+});
 
 // Get payment status for a parent
 app.get('/api/payments/parent/:parentId/status', async (req, res) => {
