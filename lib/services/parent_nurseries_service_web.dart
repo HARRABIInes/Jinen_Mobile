@@ -12,29 +12,37 @@ class ParentNurseriesServiceWeb {
       );
 
       print('📋 Parent nurseries response status: ${response.statusCode}');
+      print('📋 Parent ID: $parentId');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
         if (data['success'] == true) {
+          print('📋 Raw nurseries from API: ${jsonEncode(data['nurseries'])}');
+          
+          final mappedNurseries = List<Map<String, dynamic>>.from(
+            (data['nurseries'] ?? []).map((nursery) => {
+              'id': nursery['id'],
+              'name': nursery['name'],
+              'description': nursery['description'],
+              'phone': nursery['phone'],
+              'email': nursery['email'],
+              'address': nursery['address'],
+              'city': nursery['city'],
+              'rating': nursery['rating'],
+              'reviewCount': nursery['reviewCount'],
+              'availableSpots': nursery['availableSpots'],
+              'totalSpots': nursery['totalSpots'],
+              'childCount': nursery['childCount'],
+            })
+          );
+          
+          print('📋 Mapped nurseries: ${jsonEncode(mappedNurseries)}');
+          
           return {
             'success': true,
             'parentId': data['parentId'],
-            'nurseries': List<Map<String, dynamic>>.from(
-              (data['nurseries'] ?? []).map((nursery) => {
-                'id': nursery['id'],
-                'name': nursery['name'],
-                'description': nursery['description'],
-                'phone': nursery['phone'],
-                'email': nursery['email'],
-                'address': nursery['address'],
-                'city': nursery['city'],
-                'rating': nursery['rating'],
-                'availableSpots': nursery['availableSpots'],
-                'totalSpots': nursery['totalSpots'],
-                'childCount': nursery['childCount'],
-              })
-            )
+            'nurseries': mappedNurseries
           };
         }
       }

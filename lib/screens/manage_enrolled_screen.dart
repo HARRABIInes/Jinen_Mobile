@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/enrolled_children_service_web.dart';
+import 'chat_list_screen.dart';
 
 class ManageEnrolledScreen extends StatefulWidget {
   const ManageEnrolledScreen({super.key});
@@ -264,6 +265,54 @@ class _ManageEnrolledScreenState extends State<ManageEnrolledScreen> {
                       ],
                     ),
                   ),
+                // Contact button
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final appState = Provider.of<AppState>(context, listen: false);
+                        final nurseries = appState.nurseries;
+                        
+                        if (nurseries.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Nursery not found')),
+                          );
+                          return;
+                        }
+
+                        final nurseryId = nurseries.first.id;
+                        final ownerId = appState.user?.id;
+
+                        if (ownerId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('You must be logged in')),
+                          );
+                          return;
+                        }
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatListScreen(
+                              userId: ownerId,
+                              userType: 'directeur',
+                              targetNurseryId: nurseryId,
+                              targetParentId: parent['parentId'],
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.message, size: 16),
+                      label: const Text('Contacter ce parent'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

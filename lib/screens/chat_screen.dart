@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/message.dart';
-import '../models/conversation.dart';
-import '../services/chat_service.dart';
+import '../services/conversation_service_web.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -21,16 +19,17 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final ChatService _chatService = ChatService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  Conversation? _conversation;
+  List<Map<String, dynamic>> _messages = [];
+  bool _isLoading = true;
+  bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    _chargerConversation();
-    _marquerMessagesLus();
+    _loadMessages();
+    _markMessagesAsRead();
   }
 
   @override
@@ -40,38 +39,86 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _chargerConversation() {
-    setState(() {
-      _conversation = _chatService.getConversation(widget.conversationId);
-    });
-    _scrollToBottom();
+  Future<void> _loadMessages() async {
+    try {
+      print('📨 Loading messages for conversation: ${widget.conversationId}');
+      final messages = await ConversationServiceWeb.getMessages(widget.conversationId);
+      
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+          _isLoading = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      print('❌ Error loading messages: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
-  void _marquerMessagesLus() {
-    _chatService.marquerMessagesCommelus(
-      conversationId: widget.conversationId,
-      utilisateurId: widget.userId,
-    );
+  Future<void> _markMessagesAsRead() async {
+    try {
+      await ConversationServiceWeb.markMessagesAsRead(
+        conversationId: widget.conversationId,
+        userId: widget.userId,
+      );
+    } catch (e) {
+      print('❌ Error marking messages as read: $e');
+    }
   }
 
-  void _envoyerMessage() {
-    if (_messageController.text.trim().isEmpty || _conversation == null) {
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty) {
       return;
     }
 
-    final autreUtilisateurId = widget.userId == _conversation!.parentId
-        ? _conversation!.directeurId
-        : _conversation!.parentId;
+    setState(() {
+      _isSending = true;
+    });
 
-    _chatService.envoyerMessage(
-      conversationId: widget.conversationId,
-      expediteurId: widget.userId,
-      destinataireId: autreUtilisateurId,
-      contenu: _messageController.text.trim(),
-    );
+    try {
+      print('💬 Sending message...');
+      
+      // Send message via API
+      final response = await ConversationServiceWeb.sendMessage(
+        conversationId: widget.conversationId,
+        senderId: widget.userId,
+        content: _messageController.text.trim(),
+      );
 
-    _messageController.clear();
-    _chargerConversation();
+      if (response != null) {
+        print('✅ Message sent successfully: $response');
+        _messageController.clear();
+        
+        // Reload messages to show the new message
+        await _loadMessages();
+      } else {
+        print('❌ Message response is null');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Erreur lors de l\'envoi du message')),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Error sending message: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -134,26 +181,28 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          // Liste des messages
-          Expanded(
-            child: _conversation == null || _conversation!.messages.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _conversation!.messages.length,
-                    itemBuilder: (context, index) {
-                      final message = _conversation!.messages[index];
-                      return _buildMessageBubble(message);
-                    },
-                  ),
-          ),
-          // Zone de saisie
-          _buildMessageInput(),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Messages list
+                Expanded(
+                  child: _messages.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            final message = _messages[index];
+                            return _buildMessageBubble(message);
+                          },
+                        ),
+                ),
+                // Message input
+                _buildMessageInput(),
+              ],
+            ),
     );
   }
 
@@ -187,8 +236,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildMessageBubble(Message message) {
-    final isMe = message.expediteurId == widget.userId;
+  Widget _buildMessageBubble(Map<String, dynamic> message) {
+    final isMe = message['senderId'] == widget.userId;
+    final sentAt = message['sentAt'] != null
+        ? DateTime.parse(message['sentAt'])
+        : DateTime.now();
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -225,7 +278,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    message.contenu,
+                    message['content'] ?? '',
                     style: TextStyle(
                       color: isMe ? Colors.white : const Color(0xFF1F2937),
                       fontSize: 15,
@@ -233,7 +286,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _formatMessageTime(message.dateEnvoi),
+                    _formatMessageTime(sentAt),
                     style: TextStyle(
                       color: isMe
                           ? Colors.white.withOpacity(0.8)
@@ -281,6 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: TextField(
                 controller: _messageController,
+                enabled: !_isSending,
                 decoration: InputDecoration(
                   hintText: 'Écrivez votre message...',
                   hintStyle: TextStyle(color: Colors.grey[400]),
@@ -308,8 +362,17 @@ class _ChatScreenState extends State<ChatScreen> {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                onPressed: _envoyerMessage,
-                icon: const Icon(Icons.send, color: Colors.white),
+                onPressed: _isSending ? null : _sendMessage,
+                icon: _isSending
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.send, color: Colors.white),
                 padding: const EdgeInsets.all(12),
               ),
             ),

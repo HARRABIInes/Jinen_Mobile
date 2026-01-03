@@ -40,7 +40,8 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
     setState(() {
       _existingReview = review;
       if (review != null) {
-        _rating = (review['rating'] ?? 0).toDouble();
+        final ratingValue = review['rating'] ?? 0;
+        _rating = ratingValue is double ? ratingValue : double.tryParse(ratingValue.toString()) ?? 0.0;
         _commentController.text = review['comment'] ?? '';
       }
       _isLoading = false;
@@ -50,7 +51,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
   Future<void> _submitReview() async {
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a rating')),
+        const SnackBar(content: Text('Veuillez sélectionner une note')),
       );
       return;
     }
@@ -69,7 +70,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
     if (result['success'] == true) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Review submitted successfully! ✅')),
+          const SnackBar(content: Text('Avis soumis avec succès! ✅')),
         );
         widget.onReviewSubmitted?.call();
         Navigator.pop(context);
@@ -89,16 +90,16 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Review?'),
-        content: const Text('Are you sure you want to delete your review?'),
+        title: const Text('Supprimer l\'avis?'),
+        content: const Text('Êtes-vous sûr de vouloir supprimer votre avis?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('Annuler'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -157,7 +158,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Rate this Nursery',
+                              'Noter cette garderie',
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -186,7 +187,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Your Rating',
+                          'Votre note',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -218,7 +219,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                           child: Text(
                             _rating > 0
                                 ? '${_rating.toStringAsFixed(1)} / 5.0'
-                                : 'Select a rating',
+                                : 'Sélectionnez une note',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -237,7 +238,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Your Comment (Optional)',
+                          'Votre commentaire (Optionnel)',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -249,7 +250,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                           controller: _commentController,
                           maxLines: 4,
                           decoration: InputDecoration(
-                            hintText: 'Share your experience with this nursery...',
+                            hintText: 'Partagez votre expérience avec cette garderie...',
                             hintStyle: TextStyle(color: Colors.grey[400]),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -289,7 +290,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                                         ),
                                       ),
                                     )
-                                  : const Text('Delete'),
+                                  : const Text('Supprimer'),
                             ),
                           ),
                         if (_existingReview != null) const SizedBox(width: 12),
@@ -311,7 +312,7 @@ class _RateNurseryDialogState extends State<RateNurseryDialog> {
                                       ),
                                     ),
                                   )
-                                : Text(_existingReview != null ? 'Update' : 'Submit'),
+                                : Text(_existingReview != null ? 'Mettre à jour' : 'Soumettre'),
                           ),
                         ),
                       ],

@@ -162,7 +162,7 @@ class NurseryServiceWeb {
               facilities: List<String>.from(nurseryData['facilities'] ?? []),
               activities: List<String>.from(nurseryData['activities'] ?? []),
               distance: 0.0,
-              reviewCount: 0,
+              reviewCount: _parseInt(nurseryData['reviewCount']),
               staff: 0,
             );
           }).toList();

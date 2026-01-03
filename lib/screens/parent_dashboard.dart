@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/user.dart';
+import '../models/nursery.dart';
 import '../widgets/app_drawer.dart';
 import '../services/parent_nurseries_service_web.dart';
 import '../services/review_service_web.dart';
@@ -26,20 +27,47 @@ class _ParentDashboardState extends State<ParentDashboard> {
     _loadNurseries();
   }
 
+  // Helper function to format rating properly (average from backend)
+  String _formatRating(dynamic rating) {
+    if (rating == null) return '0.0';
+    if (rating is double) return rating.toStringAsFixed(1);
+    if (rating is int) return rating.toDouble().toStringAsFixed(1);
+    final parsed = double.tryParse(rating.toString());
+    return parsed?.toStringAsFixed(1) ?? '0.0';
+  }
+
   Future<void> _loadNurseries() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final appState = Provider.of<AppState>(context, listen: false);
       final parentId = appState.user?.id ?? '';
+      print('🔄 Loading nurseries for parentId: $parentId');
+      
       final res = await ParentNurseriesServiceWeb.getParentNurseries(parentId);
+      
+      print('🔄 Response: $res');
+      print('🔄 Success: ${res['success']}');
+      print('🔄 Nurseries count: ${(res['nurseries'] ?? []).length}');
+      if ((res['nurseries'] ?? []).isNotEmpty) {
+        print('🔄 First nursery: ${res['nurseries'][0]}');
+        print('🔄   - Name: ${res['nurseries'][0]['name']}');
+        print('🔄   - Rating: ${res['nurseries'][0]['rating']}');
+        print('🔄   - ReviewCount: ${res['nurseries'][0]['reviewCount']}');
+      }
+      
       if (mounted) {
         setState(() {
           _nurseries = res['nurseries'] ?? [];
           _isLoading = false;
+          print('✅ Nurseries loaded: ${_nurseries.length} nurseries');
+          for (var i = 0; i < _nurseries.length; i++) {
+            print('   - ${_nurseries[i]['name']}: rating=${_nurseries[i]['rating']}, reviewCount=${_nurseries[i]['reviewCount']}');
+          }
         });
       }
     } catch (e) {
+      print('❌ Error in _loadNurseries: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -504,10 +532,18 @@ class _ParentDashboardState extends State<ParentDashboard> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      '${(nursery['rating'] is double ? nursery['rating'] : double.tryParse(nursery['rating'].toString()) ?? 0).toStringAsFixed(1)} / 5',
+                      '${_formatRating(nursery['rating'])} / 5.0',
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '(${nursery['reviewCount'] ?? 0} avis)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
                       ),
                     ),
                   ],
@@ -545,6 +581,30 @@ class _ParentDashboardState extends State<ParentDashboard> {
               child: ElevatedButton.icon(
                 onPressed: () {
                   // Naviguer vers les détails de la garderie
+                  final nurseryObject = Nursery(
+                    id: nursery['id'] ?? '',
+                    name: nursery['name'] ?? 'Garderie',
+                    description: nursery['description'] ?? '',
+                    address: nursery['address'] ?? '',
+                    city: nursery['city'] ?? '',
+                    postalCode: nursery['postalCode'] ?? '',
+                    phone: nursery['phone'] ?? '',
+                    email: nursery['email'] ?? '',
+                    hours: nursery['hours'] ?? '',
+                    price: double.tryParse(nursery['price']?.toString() ?? '0') ?? 0.0,
+                    totalSpots: nursery['totalSpots'] ?? 0,
+                    availableSpots: nursery['availableSpots'] ?? 0,
+                    rating: double.tryParse(nursery['rating']?.toString() ?? '0') ?? 0.0,
+                    ageRange: nursery['ageRange'] ?? '',
+                    photo: '',
+                    distance: 0.0,
+                    reviewCount: nursery['reviewCount'] ?? 0,
+                    activities: [],
+                    facilities: [],
+                    staff: 0,
+                  );
+                  final appState = Provider.of<AppState>(context, listen: false);
+                  appState.selectNursery(nurseryObject);
                 },
                 icon: const Icon(Icons.arrow_forward, size: 16),
                 label: const Text('Voir détails'),
@@ -577,6 +637,18 @@ class _ParentDashboardState extends State<ParentDashboard> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _contactNursery(nursery),
+                icon: const Icon(Icons.message, size: 16),
+                label: const Text('Contacter'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
             ),
           ],
         ),
@@ -867,6 +939,43 @@ class _ParentDashboardState extends State<ParentDashboard> {
         ],
       ),
     );
+  }
+
+  Future<void> _contactNursery(Map<String, dynamic> nursery) async {
+    final appState = Provider.of<AppState>(context, listen: false);
+    final parentId = appState.user?.id;
+
+    if (parentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Vous devez être connecté pour contacter une garderie')),
+      );
+      return;
+    }
+
+    try {
+      print('💬 Initiating conversation with nursery: ${nursery['id']}');
+      
+      // Navigate to chat list screen with context that we're starting a conversation
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatListScreen(
+              userId: parentId,
+              userType: 'parent',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error contacting nursery: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e')),
+        );
+      }
+    }
   }
 }
 

@@ -262,6 +262,77 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
+// Get nurseries where a parent has enrolled children (with review count)
+app.get('/api/parents/:parentId/nurseries', async (req, res) => {
+  const { parentId } = req.params;
+
+  try {
+    const query = `
+      SELECT DISTINCT
+        n.id,
+        n.name,
+        n.description,
+        n.address,
+        n.city,
+        n.postal_code,
+        n.phone,
+        n.email,
+        n.hours,
+        n.price_per_month,
+        n.total_spots,
+        n.available_spots,
+        n.age_range,
+        n.rating,
+        n.photo_url,
+        n.review_count,
+        COUNT(DISTINCT e.child_id) as childCount
+      FROM enrollments e
+      JOIN nurseries n ON e.nursery_id = n.id
+      JOIN children c ON e.child_id = c.id
+      WHERE c.parent_id = $1 AND e.status IN ('active', 'pending', 'completed')
+      GROUP BY n.id, n.name, n.description, n.address, n.city, n.postal_code, 
+               n.phone, n.email, n.hours, n.price_per_month, n.total_spots, 
+               n.available_spots, n.age_range, n.rating, n.photo_url, n.review_count
+      ORDER BY n.name ASC
+    `;
+    
+    const result = await pool.query(query, [parentId]);
+
+    const nurseries = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      address: row.address,
+      city: row.city,
+      postalCode: row.postal_code,
+      phone: row.phone,
+      email: row.email,
+      hours: row.hours,
+      price: row.price_per_month,
+      totalSpots: row.total_spots,
+      availableSpots: row.available_spots,
+      ageRange: row.age_range,
+      rating: row.rating,
+      reviewCount: row.review_count,
+      photoUrl: row.photo_url,
+      childCount: parseInt(row.childCount)
+    }));
+
+    res.json({
+      success: true,
+      parentId: parentId,
+      nurseries: nurseries
+    });
+
+  } catch (error) {
+    console.error('Error fetching parent nurseries:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch nurseries' 
+    });
+  }
+});
+
 // ============== NURSERY ENDPOINTS ==============
 
 // Create new nursery
@@ -388,6 +459,7 @@ app.get('/api/nurseries', async (req, res) => {
       SELECT n.id, n.owner_id, n.name, n.description, n.address, n.city,
              n.postal_code, n.phone, n.email, n.hours, n.price_per_month,
              n.total_spots, n.available_spots, n.age_range, n.rating, n.photo_url,
+             n.review_count,
              u.name as owner_name,
              COALESCE(
                (SELECT json_agg(facility_name) FROM nursery_facilities WHERE nursery_id = n.id),
@@ -450,6 +522,7 @@ app.get('/api/nurseries', async (req, res) => {
       availableSpots: row.available_spots,
       ageRange: row.age_range,
       rating: row.rating,
+      reviewCount: row.review_count,
       photoUrl: row.photo_url,
       facilities: row.facilities,
       activities: row.activities
@@ -881,7 +954,21 @@ app.get('/api/enrollments', async (req, res) => {
         u.phone as parent_phone,
         u.email as parent_email,
         n.id as nursery_id,
-        n.name as nursery_name
+        n.name as nursery_name,
+        n.description,
+        n.address,
+        n.city,
+        n.postal_code,
+        n.phone as nursery_phone,
+        n.email as nursery_email,
+        n.hours,
+        n.price_per_month,
+        n.total_spots,
+        n.available_spots,
+        n.age_range,
+        n.rating,
+        n.review_count,
+        n.photo_url
       FROM enrollments e
       JOIN children c ON e.child_id = c.id
       JOIN users u ON c.parent_id = u.id
@@ -910,7 +997,21 @@ app.get('/api/enrollments', async (req, res) => {
       },
       nursery: {
         id: row.nursery_id,
-        name: row.nursery_name
+        name: row.nursery_name,
+        description: row.description,
+        address: row.address,
+        city: row.city,
+        postalCode: row.postal_code,
+        phone: row.nursery_phone,
+        email: row.nursery_email,
+        hours: row.hours,
+        price: row.price_per_month,
+        totalSpots: row.total_spots,
+        availableSpots: row.available_spots,
+        ageRange: row.age_range,
+        rating: row.rating,
+        reviewCount: row.review_count,
+        photoUrl: row.photo_url
       }
     }));
 
@@ -2158,6 +2259,306 @@ app.get('/api/payments/parent/:parentId/history', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get payment history'
+    });
+  }
+});
+
+// ============== CONVERSATION ENDPOINTS ==============
+
+// Get or create a conversation between parent and nursery owner
+app.post('/api/conversations/get-or-create', async (req, res) => {
+  const { parentId, nurseryId } = req.body;
+
+  if (!parentId || !nurseryId) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'parentId and nurseryId are required' 
+    });
+  }
+
+  try {
+    // Check if conversation already exists
+    const checkQuery = `
+      SELECT c.id, c.parent_id, c.nursery_id, n.name as nursery_name, p.name as parent_name
+      FROM conversations c
+      LEFT JOIN nurseries n ON c.nursery_id = n.id
+      LEFT JOIN users p ON c.parent_id = p.id
+      WHERE c.parent_id = $1 AND c.nursery_id = $2
+    `;
+    const checkResult = await pool.query(checkQuery, [parentId, nurseryId]);
+
+    if (checkResult.rows.length > 0) {
+      const conversation = checkResult.rows[0];
+      return res.json({
+        success: true,
+        conversation: {
+          id: conversation.id,
+          parentId: conversation.parent_id,
+          nurseryId: conversation.nursery_id,
+          parentName: conversation.parent_name,
+          nurseryName: conversation.nursery_name
+        }
+      });
+    }
+
+    // Create new conversation and get nursery/parent info
+    const insertQuery = `
+      INSERT INTO conversations (parent_id, nursery_id, last_message_at)
+      VALUES ($1, $2, CURRENT_TIMESTAMP)
+      RETURNING id, parent_id, nursery_id
+    `;
+    const insertResult = await pool.query(insertQuery, [parentId, nurseryId]);
+    const conversation = insertResult.rows[0];
+
+    // Get nursery and parent names
+    const infoQuery = `
+      SELECT n.name as nursery_name, p.name as parent_name
+      FROM nurseries n, users p
+      WHERE n.id = $1 AND p.id = $2
+    `;
+    const infoResult = await pool.query(infoQuery, [nurseryId, parentId]);
+    const info = infoResult.rows[0] || { nursery_name: null, parent_name: null };
+
+    res.status(201).json({
+      success: true,
+      conversation: {
+        id: conversation.id,
+        parentId: conversation.parent_id,
+        nurseryId: conversation.nursery_id,
+        parentName: info.parent_name,
+        nurseryName: info.nursery_name
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating conversation:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create conversation' 
+    });
+  }
+});
+
+// Get all conversations for a user (parent or nursery owner)
+app.get('/api/conversations/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const query = `
+      SELECT DISTINCT
+        c.id,
+        c.parent_id,
+        c.nursery_id,
+        c.last_message_at,
+        p.name as parent_name,
+        n.name as nursery_name,
+        n.owner_id,
+        u.name as owner_name,
+        (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message,
+        COUNT(CASE WHEN m.is_read = false AND m.recipient_id = $1 THEN 1 END) as unread_count
+      FROM conversations c
+      LEFT JOIN users p ON c.parent_id = p.id
+      LEFT JOIN nurseries n ON c.nursery_id = n.id
+      LEFT JOIN users u ON n.owner_id = u.id
+      LEFT JOIN messages m ON c.id = m.conversation_id
+      WHERE c.parent_id = $1 OR n.owner_id = $1
+      GROUP BY c.id, p.name, n.name, u.name, n.owner_id
+      ORDER BY c.last_message_at DESC
+    `;
+
+    const result = await pool.query(query, [userId]);
+
+    const conversations = result.rows.map(row => ({
+      id: row.id,
+      parentId: row.parent_id,
+      parentName: row.parent_name,
+      nurseryId: row.nursery_id,
+      nurseryName: row.nursery_name,
+      ownerId: row.owner_id,
+      ownerName: row.owner_name,
+      lastMessage: row.last_message || 'Nouvelle conversation',
+      lastMessageAt: row.last_message_at,
+      unreadCount: parseInt(row.unread_count) || 0
+    }));
+
+    res.json({
+      success: true,
+      conversations: conversations
+    });
+
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch conversations' 
+    });
+  }
+});
+
+// Get all messages in a conversation
+app.get('/api/conversations/:conversationId/messages', async (req, res) => {
+  const { conversationId } = req.params;
+
+  try {
+    const query = `
+      SELECT 
+        m.id,
+        m.sender_id,
+        m.recipient_id,
+        m.content,
+        m.is_read,
+        m.sent_at,
+        u.name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.conversation_id = $1
+      ORDER BY m.sent_at ASC
+    `;
+
+    const result = await pool.query(query, [conversationId]);
+
+    const messages = result.rows.map(row => ({
+      id: row.id,
+      senderId: row.sender_id,
+      senderName: row.sender_name,
+      recipientId: row.recipient_id,
+      content: row.content,
+      isRead: row.is_read,
+      sentAt: row.sent_at
+    }));
+
+    res.json({
+      success: true,
+      conversationId: conversationId,
+      messages: messages
+    });
+
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch messages' 
+    });
+  }
+});
+
+// Send a message in a conversation
+app.post('/api/conversations/:conversationId/messages', async (req, res) => {
+  const { conversationId } = req.params;
+  const { senderId, recipientId, content } = req.body;
+
+  if (!senderId || !content) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'senderId and content are required' 
+    });
+  }
+
+  try {
+    // Get conversation details to determine recipient
+    let actualRecipientId = recipientId;
+    
+    if (!actualRecipientId) {
+      // Fetch conversation to determine the other user
+      const convQuery = `
+        SELECT parent_id, nursery_id FROM conversations WHERE id = $1
+      `;
+      const convResult = await pool.query(convQuery, [conversationId]);
+      
+      if (convResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Conversation not found'
+        });
+      }
+      
+      const conversation = convResult.rows[0];
+      
+      // Determine recipient: if sender is parent, recipient is owner; otherwise vice versa
+      const parentQuery = `
+        SELECT owner_id FROM nurseries WHERE id = $1
+      `;
+      const parentResult = await pool.query(parentQuery, [conversation.nursery_id]);
+      
+      if (parentResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Nursery not found'
+        });
+      }
+      
+      const nurseryOwnerId = parentResult.rows[0].owner_id;
+      actualRecipientId = senderId === conversation.parent_id ? nurseryOwnerId : conversation.parent_id;
+    }
+
+    const query = `
+      INSERT INTO messages (conversation_id, sender_id, recipient_id, content)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, sender_id, recipient_id, content, is_read, sent_at
+    `;
+
+    const result = await pool.query(query, [conversationId, senderId, actualRecipientId, content]);
+    const message = result.rows[0];
+
+    // Update conversation last_message_at
+    await pool.query(
+      'UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = $1',
+      [conversationId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: {
+        id: message.id,
+        senderId: message.sender_id,
+        recipientId: message.recipient_id,
+        content: message.content,
+        isRead: message.is_read,
+        sentAt: message.sent_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send message' 
+    });
+  }
+});
+
+// Mark messages as read in a conversation
+app.post('/api/conversations/:conversationId/mark-read', async (req, res) => {
+  const { conversationId } = req.params;
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'userId is required' 
+    });
+  }
+
+  try {
+    const query = `
+      UPDATE messages
+      SET is_read = true
+      WHERE conversation_id = $1 AND recipient_id = $2 AND is_read = false
+      RETURNING id
+    `;
+
+    await pool.query(query, [conversationId, userId]);
+
+    res.json({
+      success: true,
+      message: 'Messages marked as read'
+    });
+
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to mark messages as read' 
     });
   }
 });

@@ -4,6 +4,7 @@ import '../providers/app_state.dart';
 import '../models/nursery.dart';
 import '../services/enrollment_service_web.dart';
 import '../widgets/rate_nursery_dialog.dart';
+import 'chat_list_screen.dart';
 
 class ParentEnrollmentsScreen extends StatefulWidget {
   const ParentEnrollmentsScreen({super.key});
@@ -276,34 +277,72 @@ class _ParentEnrollmentsScreenState extends State<ParentEnrollmentsScreen> {
             // Rating button for active enrollments
             if (status.toLowerCase() == 'active') ...[
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    final appState = Provider.of<AppState>(context, listen: false);
-                    final parentId = appState.user?.id;
-                    
-                    if (parentId != null && nursery['id'] != null) {
-                      // Create a Nursery object from enrollment data
-                      showDialog(
-                        context: context,
-                        builder: (context) => RateNurseryDialog(
-                          nursery: _createNurseryFromData(nursery),
-                          parentId: parentId,
-                          onReviewSubmitted: () {
-                            // Optionally refresh enrollments
-                          },
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.star_outline),
-                  label: const Text('Rate this Nursery'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6366F1),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final appState = Provider.of<AppState>(context, listen: false);
+                        final parentId = appState.user?.id;
+                        
+                        if (parentId != null && nursery['id'] != null) {
+                          // Create a Nursery object from enrollment data
+                          showDialog(
+                            context: context,
+                            builder: (context) => RateNurseryDialog(
+                              nursery: _createNurseryFromData(nursery),
+                              parentId: parentId,
+                              onReviewSubmitted: () {
+                                // Optionally refresh enrollments
+                              },
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.star_outline),
+                      label: const Text('Noter'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final appState = Provider.of<AppState>(context, listen: false);
+                        final parentId = appState.user?.id;
+                        
+                        if (parentId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Vous devez être connecté pour contacter une garderie'),
+                            ),
+                          );
+                          return;
+                        }
+                        
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatListScreen(
+                              userId: parentId,
+                              userType: 'parent',
+                              targetNurseryId: nursery['id'],
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.message),
+                      label: const Text('Contacter'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ],

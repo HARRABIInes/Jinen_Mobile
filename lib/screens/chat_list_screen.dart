@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/conversation.dart';
-import '../services/chat_service.dart';
+import '../services/conversation_service_web.dart';
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
   final String userId;
   final String userType; // 'parent' ou 'directeur'
+  final String? targetNurseryId; // Pour créer une conversation avec une garderie
+  final String? targetParentId; // Pour nursery owner contacting parent
 
   const ChatListScreen({
     super.key,
     required this.userId,
     required this.userType,
+    this.targetNurseryId,
+    this.targetParentId,
   });
 
   @override
@@ -19,26 +23,127 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  final ChatService _chatService = ChatService();
-  List<Conversation> _conversations = [];
+  List<dynamic> _conversations = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _chargerConversations();
-  }
-
-  void _chargerConversations() {
-    setState(() {
-      _conversations = _chatService.getConversations(widget.userId);
-    });
-  }
-
-  String _getAutreUtilisateurNom(Conversation conversation) {
-    if (widget.userType == 'parent') {
-      return 'Directeur - Garderie'; // TODO: Récupérer le nom réel
+    // If we're trying to start a conversation with a specific nursery/parent
+    if (widget.targetNurseryId != null || widget.targetParentId != null) {
+      _startNewConversation();
     } else {
-      return 'Parent'; // TODO: Récupérer le nom réel
+      _chargerConversations();
+    }
+  }
+
+  Future<void> _startNewConversation() async {
+    try {
+      if (widget.userType == 'parent' && widget.targetNurseryId != null) {
+        // Parent contacting nursery
+        print('💬 Parent creating conversation with nursery: ${widget.targetNurseryId}');
+        
+        final conversation = await ConversationServiceWeb.getOrCreateConversation(
+          parentId: widget.userId,
+          nurseryId: widget.targetNurseryId!,
+        );
+
+        if (conversation != null && mounted) {
+          print('✅ Conversation created/fetched: ${conversation['id']}');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatScreen(
+                conversationId: conversation['id'],
+                userId: widget.userId,
+                autreUtilisateurNom: conversation['nurseryName'] ?? 'Garderie',
+              ),
+            ),
+          );
+        } else {
+          if (mounted) {
+            setState(() {
+              _errorMessage = 'Impossible de créer une conversation';
+              _isLoading = false;
+            });
+          }
+        }
+      } else if (widget.userType == 'directeur' && widget.targetNurseryId != null && widget.targetParentId != null) {
+        // Nursery owner contacting parent - use existing conversation or navigate to list
+        print('💬 Nursery owner contacting parent: ${widget.targetParentId}');
+        
+        final conversation = await ConversationServiceWeb.getOrCreateConversation(
+          parentId: widget.targetParentId!,
+          nurseryId: widget.targetNurseryId!,
+        );
+
+        if (conversation != null && mounted) {
+          print('✅ Conversation created/fetched: ${conversation['id']}');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatScreen(
+                conversationId: conversation['id'],
+                userId: widget.userId,
+                autreUtilisateurNom: conversation['parentName'] ?? 'Parent',
+              ),
+            ),
+          );
+        } else {
+          if (mounted) {
+            setState(() {
+              _errorMessage = 'Impossible de créer une conversation';
+              _isLoading = false;
+            });
+          }
+        }
+      } else {
+        // Just load conversations
+        _chargerConversations();
+      }
+    } catch (e) {
+      print('❌ Error starting conversation: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Erreur: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _chargerConversations() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+      
+      final conversations = await ConversationServiceWeb.getConversations(widget.userId);
+      
+      if (mounted) {
+        setState(() {
+          _conversations = conversations;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Erreur lors du chargement des conversations: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Erreur lors du chargement des conversations';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _getAutreUtilisateurNom(dynamic conversation) {
+    if (widget.userType == 'parent') {
+      return conversation['nurseryName'] ?? 'Directeur - Garderie';
+    } else {
+      return conversation['parentName'] ?? 'Parent';
     }
   }
 
@@ -71,15 +176,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
         ),
         foregroundColor: Colors.white,
       ),
-      body: _conversations.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              itemCount: _conversations.length,
-              itemBuilder: (context, index) {
-                final conversation = _conversations[index];
-                return _buildConversationTile(conversation);
-              },
-            ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                      const SizedBox(height: 16),
+                      Text(_errorMessage!),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _chargerConversations,
+                        child: const Text('Réessayer'),
+                      ),
+                    ],
+                  ),
+                )
+              : _conversations.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      itemCount: _conversations.length,
+                      itemBuilder: (context, index) {
+                        final conversation = _conversations[index];
+                        return _buildConversationTile(conversation);
+                      },
+                    ),
     );
   }
 
@@ -120,14 +243,48 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 24),
+          if (widget.userType == 'parent')
+            ElevatedButton.icon(
+              onPressed: () => _showSelectNurseryDialog(),
+              icon: const Icon(Icons.message),
+              label: const Text('Contacter une garderie'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF667EEA),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildConversationTile(Conversation conversation) {
-    final dernierMessage = conversation.dernierMessage;
-    final hasUnread = conversation.messagesNonLus > 0;
+  Future<void> _showSelectNurseryDialog() async {
+    // For now, show a simple message
+    // In production, you'd fetch nurseries and show a list
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Contacter une garderie'),
+        content: const Text(
+          'Naviguez vers "Accueil" ou "Mes Inscriptions" pour contacter une garderie.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConversationTile(dynamic conversation) {
+    final lastMessage = conversation['lastMessage'] ?? 'Nouvelle conversation';
+    final hasUnread = (conversation['unreadCount'] ?? 0) > 0;
+    final lastMessageTime = conversation['lastMessageAt'] != null
+        ? DateTime.parse(conversation['lastMessageAt'])
+        : DateTime.now();
 
     return InkWell(
       onTap: () {
@@ -135,7 +292,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           context,
           MaterialPageRoute(
             builder: (context) => ChatScreen(
-              conversationId: conversation.id,
+              conversationId: conversation['id'],
               userId: widget.userId,
               autreUtilisateurNom: _getAutreUtilisateurNom(conversation),
             ),
@@ -184,7 +341,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         ),
                       ),
                       Text(
-                        _formatTemps(conversation.derniereMiseAJour),
+                        _formatTemps(lastMessageTime),
                         style: TextStyle(
                           fontSize: 12,
                           color: hasUnread
@@ -201,7 +358,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          dernierMessage?.contenu ?? 'Nouvelle conversation',
+                          lastMessage,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -226,7 +383,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            '${conversation.messagesNonLus}',
+                            '${conversation['unreadCount']}',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
