@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/conversation.dart';
 import '../services/conversation_service_web.dart';
 import 'chat_screen.dart';
 

@@ -427,7 +427,7 @@ class _NurseryDetailsState extends State<NurseryDetails> {
                                             final rating = ratingValue is String 
                                               ? double.tryParse(ratingValue) ?? 0.0
                                               : ratingValue is int 
-                                                ? (ratingValue as int).toDouble()
+                                                ? (ratingValue).toDouble()
                                                 : (ratingValue as double? ?? 0.0);
                                             final comment = review['comment'] as String? ?? '';
                                             return Card(

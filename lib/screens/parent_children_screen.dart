@@ -55,7 +55,7 @@ class _ParentChildrenScreenState extends State<ParentChildrenScreen> {
   Future<List<Map<String, dynamic>>> _fetchChildrenFromApi(String parentId) async {
     try {
       final uri = Uri.parse('http://localhost:3000/api/parents/$parentId/children');
-      final response = await Uri.base.resolve(uri.toString()).toString();
+      final response = Uri.base.resolve(uri.toString()).toString();
       
       // Use http package directly
       final httpResponse = await _childService.getChildrenByParentId(parentId);

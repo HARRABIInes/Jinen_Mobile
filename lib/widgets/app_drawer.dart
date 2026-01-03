@@ -26,16 +26,16 @@ class AppDrawer extends StatelessWidget {
 
     return Drawer(
       child: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              const Color(0xFF6366F1),
-              const Color(0xFF8B5CF6),
+              Color(0xFF6366F1),
+              Color(0xFF8B5CF6),
               Colors.white,
             ],
-            stops: const [0.0, 0.15, 0.4],
+            stops: [0.0, 0.15, 0.4],
           ),
         ),
         child: ListView(
@@ -130,7 +130,7 @@ class AppDrawer extends StatelessWidget {
                 title: 'Tableau de bord',
                 gradient: LinearGradient(
                   colors: [
-                    Color(0xFF6366F1).withOpacity(0.1),
+                    const Color(0xFF6366F1).withOpacity(0.1),
                     Colors.transparent
                   ],
                 ),
@@ -350,8 +350,8 @@ class AppDrawer extends StatelessWidget {
                     appState.logout();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Row(
-                          children: const [
+                        content: const Row(
+                          children: [
                             Icon(Icons.check_circle_outline,
                                 color: Colors.white),
                             SizedBox(width: 12),
@@ -528,7 +528,7 @@ class AppDrawer extends StatelessWidget {
                 color: Colors.red.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.warning_rounded, color: Colors.red, size: 24),
+              child: const Icon(Icons.warning_rounded, color: Colors.red, size: 24),
             ),
             const SizedBox(width: 12),
             Text(title),

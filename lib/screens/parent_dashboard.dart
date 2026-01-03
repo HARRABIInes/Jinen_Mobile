@@ -749,11 +749,11 @@ class _ParentDashboardState extends State<ParentDashboard> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
-              const Icon(Icons.calendar_today, color: Color(0xFF9C27B0)),
-              const SizedBox(width: 8),
-              const Text('Programme d\'aujourd\'hui'),
+              Icon(Icons.calendar_today, color: Color(0xFF9C27B0)),
+              SizedBox(width: 8),
+              Text('Programme d\'aujourd\'hui'),
             ],
           ),
           content: SizedBox(

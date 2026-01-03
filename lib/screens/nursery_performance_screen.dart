@@ -330,7 +330,7 @@ class _NurseryPerformanceScreenState extends State<NurseryPerformanceScreen> {
     final ratingDouble = ratingValue is double
         ? ratingValue
         : (ratingValue is int 
-            ? (ratingValue as int).toDouble()
+            ? (ratingValue).toDouble()
             : double.tryParse(ratingValue.toString()) ?? 0.0);
     
     print('🔍 DEBUG Parsed Double: $ratingDouble');

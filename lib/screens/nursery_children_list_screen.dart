@@ -95,10 +95,10 @@ class _NurseryChildrenListScreenState extends State<NurseryChildrenListScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
+              gradient: const LinearGradient(
                 colors: [
-                  const Color(0xFF6366F1),
-                  const Color(0xFF8B5CF6),
+                  Color(0xFF6366F1),
+                  Color(0xFF8B5CF6),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -119,7 +119,7 @@ class _NurseryChildrenListScreenState extends State<NurseryChildrenListScreen> {
                   color: Colors.white.withOpacity(0.9),
                 ),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Enfants sans parent',
                   style: TextStyle(
                     color: Colors.white,
@@ -155,9 +155,9 @@ class _NurseryChildrenListScreenState extends State<NurseryChildrenListScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(
+                        const CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            const Color(0xFF6366F1),
+                            Color(0xFF6366F1),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -286,7 +286,7 @@ class _NurseryChildrenListScreenState extends State<NurseryChildrenListScreen> {
                         width: 2,
                       ),
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.child_care_rounded,
                       color: Colors.orange,
                       size: 28,
@@ -316,7 +316,7 @@ class _NurseryChildrenListScreenState extends State<NurseryChildrenListScreen> {
                             color: Colors.orange.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
@@ -324,7 +324,7 @@ class _NurseryChildrenListScreenState extends State<NurseryChildrenListScreen> {
                                 size: 14,
                                 color: Colors.orange,
                               ),
-                              const SizedBox(width: 6),
+                              SizedBox(width: 6),
                               Text(
                                 'Sans parent',
                                 style: TextStyle(

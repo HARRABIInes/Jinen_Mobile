@@ -103,10 +103,10 @@ class _NurserySettingsScreenState extends State<NurserySettingsScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(30),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [
-                    const Color(0xFF6366F1),
-                    const Color(0xFF8B5CF6),
+                    Color(0xFF6366F1),
+                    Color(0xFF8B5CF6),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -476,8 +476,8 @@ class _NurserySettingsScreenState extends State<NurserySettingsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
-            children: const [
+          content: const Row(
+            children: [
               Icon(Icons.check_circle_outline, color: Colors.white),
               SizedBox(width: 12),
               Text('Paramètres enregistrés avec succès'),

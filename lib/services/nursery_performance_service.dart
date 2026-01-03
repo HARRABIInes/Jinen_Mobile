@@ -67,7 +67,7 @@ class NurseryPerformanceService {
             final ratingDouble = rating is double
                 ? rating
                 : (rating is int 
-                    ? (rating as int).toDouble()
+                    ? (rating).toDouble()
                     : double.tryParse(rating.toString()) ?? 0.0);
             final ratingValue = ratingDouble.toInt();
             
