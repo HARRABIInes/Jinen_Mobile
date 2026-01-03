@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../providers/app_state.dart';
 
 class NurseryProgramScreen extends StatefulWidget {
@@ -10,16 +12,10 @@ class NurseryProgramScreen extends StatefulWidget {
 }
 
 class _NurseryProgramScreenState extends State<NurseryProgramScreen> {
-  final Map<String, List<Map<String, String>>> _weeklyProgram = {
-    'Lundi': [],
-    'Mardi': [],
-    'Mercredi': [],
-    'Jeudi': [],
-    'Vendredi': [],
-    'Samedi': [],
-  };
-
+  List<Map<String, dynamic>> _scheduleItems = [];
   bool _isEditing = false;
+  bool _isLoading = true;
+  String? _nurseryId;
 
   @override
   void initState() {
@@ -27,22 +23,285 @@ class _NurseryProgramScreenState extends State<NurseryProgramScreen> {
     _loadProgram();
   }
 
-  void _loadProgram() {
-    // Programme par défaut - à charger depuis la base de données
+  Future<void> _loadProgram() async {
+    setState(() => _isLoading = true);
+    
+    final appState = Provider.of<AppState>(context, listen: false);
+    final user = appState.user;
+    
+    if (user != null) {
+      try {
+        // Get nursery ID from owner
+        final nurseryResponse = await http.get(
+          Uri.parse('http://localhost:3000/api/nurseries/owner/${user.id}'),
+        );
+        
+        if (nurseryResponse.statusCode == 200) {
+          final nurseryData = jsonDecode(nurseryResponse.body);
+          if (nurseryData['success'] == true && nurseryData['nursery'] != null) {
+            _nurseryId = nurseryData['nursery']['id'];
+            
+            // Load schedule
+            final scheduleResponse = await http.get(
+              Uri.parse('http://localhost:3000/api/nurseries/$_nurseryId/schedule'),
+            );
+            
+            if (scheduleResponse.statusCode == 200) {
+              final scheduleData = jsonDecode(scheduleResponse.body);
+              if (scheduleData['success'] == true) {
+                setState(() {
+                  _scheduleItems = List<Map<String, dynamic>>.from(scheduleData['schedule'] ?? []);
+                  _isLoading = false;
+                });
+                return;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        print('Error loading program: $e');
+      }
+    }
+    
     setState(() {
-      _weeklyProgram['Lundi'] = [
-        {'time': '08:00 - 09:00', 'activity': 'Accueil et jeux libres'},
-        {'time': '09:00 - 10:00', 'activity': 'Activités créatives'},
-        {'time': '10:00 - 11:00', 'activity': 'Récréation'},
-        {'time': '11:00 - 12:00', 'activity': 'Apprentissage'},
-      ];
-      _weeklyProgram['Mardi'] = [
-        {'time': '08:00 - 09:00', 'activity': 'Accueil'},
-        {'time': '09:00 - 10:30', 'activity': 'Musique et chant'},
-        {'time': '10:30 - 11:30', 'activity': 'Jeux en plein air'},
-        {'time': '11:30 - 12:00', 'activity': 'Lecture de contes'},
-      ];
+      _scheduleItems = [];
+      _isLoading = false;
     });
+  }
+
+  Future<void> _addActivity(BuildContext context) async {
+    final timeController = TextEditingController();
+    final activityController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Ajouter une activité'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: timeController,
+                decoration: InputDecoration(
+                  labelText: 'Horaire (ex: 09:00)',
+                  hintText: '09:00',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.access_time),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: activityController,
+                decoration: InputDecoration(
+                  labelText: 'Nom de l\'activité',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.event),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Description (optionnel)',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.description),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Ajouter', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && _nurseryId != null) {
+      if (timeController.text.isEmpty || activityController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Veuillez remplir l\'horaire et le nom de l\'activité')),
+        );
+        return;
+      }
+
+      try {
+        final response = await http.post(
+          Uri.parse('http://localhost:3000/api/nurseries/$_nurseryId/schedule'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'timeSlot': timeController.text,
+            'activityName': activityController.text,
+            'description': descriptionController.text,
+          }),
+        );
+
+        if (response.statusCode == 201) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Activité ajoutée avec succès'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadProgram();
+        } else {
+          throw Exception('Erreur serveur');
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _editActivity(Map<String, dynamic> item) async {
+    final timeController = TextEditingController(text: item['timeSlot'] ?? item['time_slot'] ?? '');
+    final activityController = TextEditingController(text: item['activityName'] ?? item['activity_name'] ?? '');
+    final descriptionController = TextEditingController(text: item['description'] ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Modifier l\'activité'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: timeController,
+                decoration: InputDecoration(
+                  labelText: 'Horaire',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.access_time),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: activityController,
+                decoration: InputDecoration(
+                  labelText: 'Nom de l\'activité',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.event),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.description),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Enregistrer', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      try {
+        final scheduleId = item['id'];
+        final response = await http.put(
+          Uri.parse('http://localhost:3000/api/nurseries/schedule/$scheduleId'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'timeSlot': timeController.text,
+            'activityName': activityController.text,
+            'description': descriptionController.text,
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Activité modifiée'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadProgram();
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteActivity(Map<String, dynamic> item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer l\'activité ?'),
+        content: Text('Voulez-vous vraiment supprimer "${item['activityName'] ?? item['activity_name']}" ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Supprimer', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final scheduleId = item['id'];
+        final response = await http.delete(
+          Uri.parse('http://localhost:3000/api/nurseries/schedule/$scheduleId'),
+        );
+
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Activité supprimée'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadProgram();
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   @override
@@ -51,344 +310,177 @@ class _NurseryProgramScreenState extends State<NurseryProgramScreen> {
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
-          'Programme Hebdomadaire',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+          'Programme Journalier',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
         backgroundColor: const Color(0xFF6366F1),
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
-            icon: Icon(_isEditing ? Icons.save_rounded : Icons.edit_rounded),
+            icon: Icon(_isEditing ? Icons.check : Icons.edit_rounded),
             onPressed: () {
               setState(() => _isEditing = !_isEditing);
-              if (!_isEditing) {
-                _saveProgram();
-              }
             },
-            tooltip: _isEditing ? 'Enregistrer' : 'Modifier',
+            tooltip: _isEditing ? 'Terminer' : 'Modifier',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Header avec gradient
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF6366F1),
-                  const Color(0xFF8B5CF6),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                Icon(
-                  Icons.calendar_month_rounded,
-                  size: 48,
-                  color: Colors.white.withOpacity(0.9),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _isEditing
-                      ? 'Mode édition activé'
-                      : 'Programme de la semaine',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (_isEditing)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Appuyez sur une activité pour la modifier',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 12,
-                      ),
+                // Header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF6366F1).withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 48,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _isEditing ? 'Mode édition activé' : '${_scheduleItems.length} activité(s)',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Liste des activités
+                Expanded(
+                  child: _scheduleItems.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.event_note, size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Aucune activité programmée',
+                                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Appuyez sur + pour ajouter',
+                                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadProgram,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _scheduleItems.length,
+                            itemBuilder: (context, index) {
+                              final item = _scheduleItems[index];
+                              return _buildScheduleCard(item);
+                            },
+                          ),
+                        ),
+                ),
               ],
             ),
-          ),
-
-          // Liste des jours
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: _weeklyProgram.keys.length,
-              itemBuilder: (context, index) {
-                final day = _weeklyProgram.keys.elementAt(index);
-                final activities = _weeklyProgram[day] ?? [];
-                return _buildDayCard(day, activities, index);
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: _isEditing
-          ? FloatingActionButton.extended(
-              onPressed: () => _addActivity(context),
-              backgroundColor: const Color(0xFF6366F1),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Ajouter une activité'),
-            )
-          : null,
-    );
-  }
-
-  Widget _buildDayCard(
-      String day, List<Map<String, String>> activities, int index) {
-    return TweenAnimationBuilder(
-      duration: Duration(milliseconds: 300 + (index * 50)),
-      tween: Tween<double>(begin: 0, end: 1),
-      curve: Curves.easeOutCubic,
-      builder: (context, double value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Opacity(
-            opacity: value,
-            child: child,
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête du jour
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF6366F1).withOpacity(0.1),
-                    const Color(0xFF8B5CF6).withOpacity(0.05),
-                  ],
-                ),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.calendar_today_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    day,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF6366F1),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${activities.length} activité${activities.length > 1 ? 's' : ''}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF6366F1),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Liste des activités
-            if (activities.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Center(
-                  child: Text(
-                    'Aucune activité prévue',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              )
-            else
-              ...activities.asMap().entries.map((entry) {
-                final idx = entry.key;
-                final activity = entry.value;
-                return _buildActivityItem(
-                  day,
-                  activity,
-                  idx == activities.length - 1,
-                );
-              }).toList(),
-          ],
-        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _addActivity(context),
+        backgroundColor: const Color(0xFF6366F1),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Ajouter'),
       ),
     );
   }
 
-  Widget _buildActivityItem(
-      String day, Map<String, String> activity, bool isLast) {
-    return Material(
-      color: Colors.transparent,
+  Widget _buildScheduleCard(Map<String, dynamic> item) {
+    final timeSlot = item['timeSlot'] ?? item['time_slot'] ?? '';
+    final activityName = item['activityName'] ?? item['activity_name'] ?? '';
+    final description = item['description'] ?? '';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
-        onTap: _isEditing ? () => _editActivity(day, activity) : null,
-        borderRadius: BorderRadius.only(
-          bottomLeft: isLast ? const Radius.circular(20) : Radius.zero,
-          bottomRight: isLast ? const Radius.circular(20) : Radius.zero,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: isLast
-                  ? BorderSide.none
-                  : BorderSide(color: Colors.grey[200]!, width: 1),
-            ),
-          ),
+        onTap: _isEditing ? () => _editActivity(item) : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF6366F1).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.access_time_rounded,
-                  color: Colors.green,
-                  size: 18,
+                  color: Color(0xFF6366F1),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      activity['time'] ?? '',
+                      timeSlot,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
+                        color: Colors.grey[600],
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      activity['activity'] ?? '',
+                      activityName,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               if (_isEditing)
                 IconButton(
-                  icon: Icon(Icons.delete_outline_rounded, color: Colors.red),
-                  onPressed: () => _deleteActivity(day, activity),
-                  iconSize: 20,
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () => _deleteActivity(item),
                 ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _addActivity(BuildContext context) {
-    // TODO: Implémenter l'ajout d'activité
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Fonction d\'ajout à implémenter'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  void _editActivity(String day, Map<String, String> activity) {
-    // TODO: Implémenter la modification
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Modification de "${activity['activity']}"'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  void _deleteActivity(String day, Map<String, String> activity) {
-    setState(() {
-      _weeklyProgram[day]?.remove(activity);
-    });
-  }
-
-  void _saveProgram() {
-    // TODO: Sauvegarder dans la base de données
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            const Text('Programme enregistré avec succès'),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
       ),
     );
   }

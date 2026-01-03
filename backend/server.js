@@ -262,6 +262,62 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
+// Get children by parent ID
+app.get('/api/parents/:parentId/children', async (req, res) => {
+  const { parentId } = req.params;
+
+  console.log('👶 Fetching children for parent:', parentId);
+
+  try {
+    const query = `
+      SELECT 
+        c.id,
+        c.name,
+        c.age,
+        c.date_of_birth,
+        c.photo_url,
+        c.medical_notes,
+        c.created_at,
+        n.id as nursery_id,
+        n.name as nursery_name
+      FROM children c
+      LEFT JOIN enrollments e ON c.id = e.child_id AND e.status = 'active'
+      LEFT JOIN nurseries n ON e.nursery_id = n.id
+      WHERE c.parent_id = $1
+      ORDER BY c.created_at DESC
+    `;
+    
+    const result = await pool.query(query, [parentId]);
+
+    const children = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      age: row.age,
+      dateOfBirth: row.date_of_birth,
+      photoUrl: row.photo_url,
+      medicalNotes: row.medical_notes,
+      createdAt: row.created_at,
+      nurseryId: row.nursery_id,
+      nurseryName: row.nursery_name
+    }));
+
+    console.log(`✅ Found ${children.length} children for parent ${parentId}`);
+
+    res.json({
+      success: true,
+      count: children.length,
+      children
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching children:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch children' 
+    });
+  }
+});
+
 // Get nurseries where a parent has enrolled children (with review count)
 app.get('/api/parents/:parentId/nurseries', async (req, res) => {
   const { parentId } = req.params;
@@ -1925,6 +1981,59 @@ app.get('/api/nurseries/:nurseryId/reviews', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching reviews:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch reviews'
+    });
+  }
+});
+
+// Get all reviews by parent
+app.get('/api/reviews/parent/:parentId', async (req, res) => {
+  const { parentId } = req.params;
+
+  console.log('⭐ Fetching reviews for parent:', parentId);
+
+  try {
+    const query = `
+      SELECT 
+        r.id,
+        r.rating,
+        r.comment,
+        r.created_at,
+        r.updated_at,
+        n.id as nursery_id,
+        n.name as nursery_name,
+        n.photo_url as nursery_photo
+      FROM reviews r
+      JOIN nurseries n ON r.nursery_id = n.id
+      WHERE r.parent_id = $1
+      ORDER BY r.created_at DESC
+    `;
+
+    const result = await pool.query(query, [parentId]);
+
+    const reviews = result.rows.map(row => ({
+      id: row.id,
+      rating: parseFloat(row.rating),
+      comment: row.comment,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      nurseryId: row.nursery_id,
+      nurseryName: row.nursery_name,
+      nurseryPhoto: row.nursery_photo
+    }));
+
+    console.log(`✅ Found ${reviews.length} reviews for parent ${parentId}`);
+
+    res.json({
+      success: true,
+      count: reviews.length,
+      reviews
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching parent reviews:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch reviews'

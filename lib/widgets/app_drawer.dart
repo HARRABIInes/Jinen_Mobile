@@ -7,6 +7,9 @@ import '../screens/nursery_children_list_screen.dart';
 import '../screens/nursery_program_screen.dart';
 import '../screens/nursery_performance_screen.dart';
 import '../screens/nursery_settings_screen.dart';
+import '../screens/parent_children_screen.dart';
+import '../screens/parent_payment_screen.dart';
+import '../screens/parent_reviews_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final UserType userType;
@@ -231,7 +234,12 @@ class AppDrawer extends StatelessWidget {
                 title: 'Mes Enfants',
                 onTap: () {
                   Navigator.pop(context);
-                  _showSnackBar(context, 'Liste des enfants à implémenter');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ParentChildrenScreen(),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 4),
@@ -241,8 +249,12 @@ class AppDrawer extends StatelessWidget {
                 title: 'Paiements',
                 onTap: () {
                   Navigator.pop(context);
-                  _showSnackBar(
-                      context, 'Historique des paiements à implémenter');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ParentPaymentScreen(),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 4),
@@ -252,7 +264,12 @@ class AppDrawer extends StatelessWidget {
                 title: 'Mes Avis',
                 onTap: () {
                   Navigator.pop(context);
-                  _showSnackBar(context, 'Mes avis à implémenter');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ParentReviewsScreen(),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 12),
