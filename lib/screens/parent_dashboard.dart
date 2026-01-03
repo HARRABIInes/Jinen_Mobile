@@ -6,7 +6,9 @@ import '../models/nursery.dart';
 import '../widgets/app_drawer.dart';
 import '../services/parent_nurseries_service_web.dart';
 import '../services/review_service_web.dart';
+import '../services/notification_service_web.dart';
 import 'chat_list_screen.dart';
+import 'notifications_screen.dart';
 import 'parent_enrollments_screen.dart';
 import 'parent_payment_screen.dart';
 
@@ -20,11 +22,31 @@ class ParentDashboard extends StatefulWidget {
 class _ParentDashboardState extends State<ParentDashboard> {
   late List<dynamic> _nurseries = [];
   bool _isLoading = true;
+  int _unreadNotificationCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadNurseries();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    if (!mounted) return;
+    try {
+      final appState = Provider.of<AppState>(context, listen: false);
+      final userId = appState.user?.id ?? '';
+      if (userId.isNotEmpty) {
+        final count = await NotificationServiceWeb.getUnreadCount(userId);
+        if (mounted) {
+          setState(() {
+            _unreadNotificationCount = count;
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading unread count: $e');
+    }
   }
 
   // Helper function to format rating properly (average from backend)
@@ -186,26 +208,42 @@ class _ParentDashboardState extends State<ParentDashboard> {
                             IconButton(
                               icon: const Icon(Icons.notifications_outlined,
                                   color: Colors.white, size: 28),
-                              onPressed: () {},
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => NotificationsScreen(
+                                      userId: user?.id ?? 'parent1',
+                                    ),
+                                  ),
+                                ).then((_) {
+                                  // Refresh unread count when returning
+                                  _loadUnreadCount();
+                                });
+                              },
                             ),
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Text(
-                                  '2',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
+                            if (_unreadNotificationCount > 0)
+                              Positioned(
+                                right: 8,
+                                top: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    _unreadNotificationCount > 99
+                                        ? '99+'
+                                        : _unreadNotificationCount.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
                           ],
                         ),
                       ],

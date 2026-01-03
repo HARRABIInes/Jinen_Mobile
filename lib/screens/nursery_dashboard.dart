@@ -5,8 +5,10 @@ import '../models/user.dart';
 import '../providers/app_state.dart';
 import '../services/enrollment_service_web.dart';
 import '../services/nursery_dashboard_service.dart';
+import '../services/notification_service_web.dart';
 import '../widgets/app_drawer.dart';
 import 'chat_list_screen.dart';
+import 'notifications_screen.dart';
 import 'manage_enrolled_screen.dart';
 import 'nursery_performance_screen.dart';
 import 'nursery_financial_tracking_screen.dart';
@@ -26,17 +28,37 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _schedule = [];
   List<Map<String, dynamic>> _pendingEnrollments = [];
+  int _unreadNotificationCount = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboardData());
+    _loadUnreadCount();
 
     // Listen for updates from other screens (e.g., ManageEnrolledScreen)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<AppState>(context, listen: false)
           .addListener(_onAppStateChange);
     });
+  }
+
+  Future<void> _loadUnreadCount() async {
+    if (!mounted) return;
+    try {
+      final appState = Provider.of<AppState>(context, listen: false);
+      final userId = appState.user?.id ?? '';
+      if (userId.isNotEmpty) {
+        final count = await NotificationServiceWeb.getUnreadCount(userId);
+        if (mounted) {
+          setState(() {
+            _unreadNotificationCount = count;
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading unread count: $e');
+    }
   }
 
   void _onAppStateChange() {
@@ -341,19 +363,57 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                 ),
                                 const SizedBox(width: 8),
                                 // Notifications Button
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.notifications_outlined,
-                                      color: Colors.white,
-                                      size: 24,
+                                Stack(
+                                  children: [
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: IconButton(
+                                        icon: const Icon(
+                                          Icons.notifications_outlined,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => NotificationsScreen(
+                                                userId: user?.id ?? 'nursery1',
+                                              ),
+                                            ),
+                                          ).then((_) {
+                                            // Refresh unread count when returning
+                                            _loadUnreadCount();
+                                          });
+                                        },
+                                      ),
                                     ),
-                                    onPressed: () {},
-                                  ),
+                                    if (_unreadNotificationCount > 0)
+                                      Positioned(
+                                        right: 0,
+                                        top: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.red,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Text(
+                                            _unreadNotificationCount > 99
+                                                ? '99+'
+                                                : _unreadNotificationCount.toString(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                                 const SizedBox(width: 8),
                                 // Logout Button
