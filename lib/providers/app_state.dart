@@ -9,6 +9,7 @@ import '../services/user_service_web.dart';
 import '../services/nursery_service.dart';
 import '../services/nursery_service_web.dart';
 import '../services/child_service.dart';
+import '../services/child_service_web.dart';
 
 enum ScreenType {
   welcome,
@@ -35,6 +36,7 @@ class AppState extends ChangeNotifier {
   final NurseryService _nurseryService = NurseryService();
   final NurseryServiceWeb _nurseryServiceWeb = NurseryServiceWeb();
   final ChildService _childService = ChildService();
+  final ChildServiceWeb _childServiceWeb = ChildServiceWeb();
 
   ScreenType get currentScreen => _currentScreen;
   User? get user => _user;
@@ -48,6 +50,7 @@ class AppState extends ChangeNotifier {
   // Use web service for web platform, regular service for desktop/mobile
   dynamic get userService => kIsWeb ? _userServiceWeb : _userService;
   dynamic get nurseryService => kIsWeb ? _nurseryServiceWeb : _nurseryService;
+  dynamic get childService => kIsWeb ? _childServiceWeb : _childService;
 
   int get unreadMessagesCount {
     if (_user == null) return 0;

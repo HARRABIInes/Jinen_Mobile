@@ -28,13 +28,22 @@ class _ParentEnrollmentsScreenState extends State<ParentEnrollmentsScreen> {
   Future<void> _loadEnrollments() async {
     setState(() => _isLoading = true);
 
-    // TODO: Remplacer par l'ID du parent connecté
-    final enrollments = await _enrollmentService.getAllEnrollments();
-
-    setState(() {
-      _enrollments = enrollments;
-      _isLoading = false;
-    });
+    // Récupérer l'ID du parent connecté
+    final appState = Provider.of<AppState>(context, listen: false);
+    final parentId = appState.user?.id;
+    
+    if (parentId != null) {
+      final enrollments = await _enrollmentService.getEnrollmentsByParent(parentId);
+      setState(() {
+        _enrollments = enrollments;
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _enrollments = [];
+        _isLoading = false;
+      });
+    }
   }
 
   Color _getStatusColor(String status) {
