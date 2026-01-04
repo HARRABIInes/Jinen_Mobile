@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 require('dotenv').config();
 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -909,12 +910,14 @@ app.post('/api/enrollments', async (req, res) => {
 
     // 5. Create payment for this enrollment
     const paymentQuery = `
-      INSERT INTO payments (enrollment_id, parent_id, amount, status, description)
+      INSERT INTO payments (enrollment_id, parent_id, nursery_id, child_id, amount, payment_status, description)
       SELECT 
         e.id,
         c.parent_id,
+        e.nursery_id,
+        e.child_id,
         COALESCE(n.price_per_month, 100.00),
-        'pending',
+        'unpaid',
         'Monthly fee for ' || c.name || ' at ' || n.name
       FROM enrollments e
       JOIN nurseries n ON e.nursery_id = n.id
@@ -1609,6 +1612,30 @@ app.post('/api/enrollments/:enrollmentId/accept', async (req, res) => {
     // Decrease available spots
     const spotsResult = await client.query('UPDATE nurseries SET available_spots = available_spots - 1 WHERE id = $1 AND available_spots > 0 RETURNING available_spots', [enrollment.nursery_id]);
     console.log('📊 Available spots updated to:', spotsResult.rows[0]?.available_spots);
+
+    // Create payment record for this enrollment
+    const paymentQuery = `
+      INSERT INTO payments (enrollment_id, parent_id, nursery_id, child_id, amount, payment_status)
+      SELECT 
+        e.id,
+        c.parent_id,
+        e.nursery_id,
+        e.child_id,
+        COALESCE(n.price_per_month, 100.00),
+        'unpaid'
+      FROM enrollments e
+      JOIN nurseries n ON e.nursery_id = n.id
+      JOIN children c ON e.child_id = c.id
+      WHERE e.id = $1
+      ON CONFLICT (enrollment_id) DO NOTHING
+      RETURNING id
+    `;
+    const paymentResult = await client.query(paymentQuery, [enrollmentId]);
+    if (paymentResult.rows.length > 0) {
+      console.log('💰 Payment created for enrollment:', enrollmentId, 'Payment ID:', paymentResult.rows[0].id);
+    } else {
+      console.log('ℹ️  Payment already exists for enrollment:', enrollmentId);
+    }
 
     // Create notification for parent
     await client.query(
