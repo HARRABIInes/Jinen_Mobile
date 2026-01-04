@@ -909,23 +909,28 @@ app.post('/api/enrollments', async (req, res) => {
 
     // 5. Create payment for this enrollment
     const paymentQuery = `
-      INSERT INTO payments (enrollment_id, parent_id, amount, status, description)
+      INSERT INTO payments (enrollment_id, parent_id, nursery_id, child_id, amount, payment_status)
       SELECT 
         e.id,
         c.parent_id,
+        e.nursery_id,
+        e.child_id,
         COALESCE(n.price_per_month, 100.00),
-        'pending',
-        'Monthly fee for ' || c.name || ' at ' || n.name
+        'unpaid'
       FROM enrollments e
       JOIN nurseries n ON e.nursery_id = n.id
       JOIN children c ON e.child_id = c.id
       WHERE e.id = $1
-      ON CONFLICT (enrollment_id) DO NOTHING
+      AND NOT EXISTS (
+        SELECT 1 FROM payments WHERE enrollment_id = e.id
+      )
       RETURNING id
     `;
     const paymentResult = await client.query(paymentQuery, [enrollmentId]);
     if (paymentResult.rows.length > 0) {
       console.log('✅ Payment created:', paymentResult.rows[0].id);
+    } else {
+      console.log('⚠️ Payment already exists for enrollment:', enrollmentId);
     }
 
     await client.query('COMMIT');
