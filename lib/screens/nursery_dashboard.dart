@@ -253,53 +253,53 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                       children: [
                         // Top Bar
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Builder(
-                                  builder: (context) => Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.menu_rounded,
-                                        color: Colors.white,
-                                        size: 26,
-                                      ),
-                                      onPressed: () =>
-                                          Scaffold.of(context).openDrawer(),
+                            Builder(
+                              builder: (context) => Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.menu_rounded,
+                                    color: Colors.white,
+                                    size: 26,
+                                  ),
+                                  onPressed: () =>
+                                      Scaffold.of(context).openDrawer(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Bonjour,',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Bonjour,',
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.9),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w400,
-                                      ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    user?.name ?? 'Garderie',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      user?.name ?? 'Garderie',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             Row(
                               children: [
                                 // Chat Button with Badge
@@ -380,7 +380,8 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (context) => NotificationsScreen(
+                                              builder: (context) =>
+                                                  NotificationsScreen(
                                                 userId: user?.id ?? 'nursery1',
                                               ),
                                             ),
@@ -404,7 +405,8 @@ class _NurseryDashboardState extends State<NurseryDashboard> {
                                           child: Text(
                                             _unreadNotificationCount > 99
                                                 ? '99+'
-                                                : _unreadNotificationCount.toString(),
+                                                : _unreadNotificationCount
+                                                    .toString(),
                                             style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 9,

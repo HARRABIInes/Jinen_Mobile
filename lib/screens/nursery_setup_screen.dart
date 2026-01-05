@@ -202,13 +202,17 @@ class _NurserySetupScreenState extends State<NurserySetupScreen> {
                 padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    if (_currentPage > 0)
-                      IconButton(
-                        onPressed: _previousPage,
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      )
-                    else
-                      const SizedBox(width: 48),
+                    SizedBox(
+                      width: 48,
+                      child: _currentPage > 0
+                          ? IconButton(
+                              onPressed: _previousPage,
+                              icon: const Icon(Icons.arrow_back,
+                                  color: Colors.white),
+                              padding: EdgeInsets.zero,
+                            )
+                          : null,
+                    ),
                     Expanded(
                       child: Column(
                         children: [
@@ -223,6 +227,7 @@ class _NurserySetupScreenState extends State<NurserySetupScreen> {
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
                             children: List.generate(
                               3,
                               (index) => Container(
